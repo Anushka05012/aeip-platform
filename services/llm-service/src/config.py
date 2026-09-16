@@ -51,7 +51,7 @@ class Settings:
 
         return Settings(
             groq_api_key=api_key,
-            groq_model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             chunk_max_tokens=_get_int("CHUNK_MAX_TOKENS", 500),
             chunk_overlap_tokens=_get_int("CHUNK_OVERLAP_TOKENS", 50),
         )

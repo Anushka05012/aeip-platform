@@ -1,4 +1,4 @@
-# llm-services
+# llm-service
 
 Anushka's module — Intelligence, Risk & Analytics Layer (Engine & RAG).
 
@@ -44,13 +44,37 @@ Run the tests (fast, no API key required):
 python -m pytest tests/ -v
 ```
 
-Chunk a real file or a whole directory, and (if `.env` is set up) smoke-test
-the Groq connection:
+Run the complete local DORA -> risk -> RAG demo. It needs no API key,
+database, or team integration:
 
 ```bash
-python scripts/demo_chunk_and_test_groq.py ../../frontend
-python scripts/demo_chunk_and_test_groq.py ../../frontend/src/app.tsx
+python scripts/demo_intelligence_flow.py
 ```
+
+Add `--ai` to generate the final risk summary with Groq rather than the
+built-in evidence-grounded fallback:
+
+```bash
+python scripts/demo_intelligence_flow.py --ai
+```
+
+Ask a repository question and see the exact RAG sources used:
+
+```bash
+python scripts/ask_repository.py "What should we test before payment deployment?"
+```
+
+For a Groq-written answer strictly grounded in those retrieved sources:
+
+```bash
+python scripts/ask_repository.py --ai "Why is payment_service risky?"
+```
+
+The pipeline uses `JsonSeedDataSource` and `data/demo_repository.json` now.
+When ingestion is ready, implement the `AnalyticsDataSource` contract in
+`src/domain.py` as a Supabase adapter and pass its `RepositorySnapshot` to the
+same pipeline. The risk, DORA, embedding, retrieval, and summary code stay the
+same.
 
 ## How the chunker works
 
@@ -84,7 +108,7 @@ reply = client.chat([{"role": "user", "content": "Say hi in 5 words."}])
 print(reply)
 ```
 
-**Model name note:** `.env.example` defaults to `llama-3.3-70b-versatile`.
+**Model name note:** `.env.example` defaults to `openai/gpt-oss-120b`.
 Groq's available model IDs change fairly often — double check
 https://console.groq.com/docs/models before the demo/review if things
 look off.
