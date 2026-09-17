@@ -7,6 +7,7 @@
     "skipLibCheck": true,
     "strict": false,
     "outDir": "dist",
+    "rootDir": ".",
     "types": ["node"]
   },
   "include": ["ingestion/**/*.ts"]
