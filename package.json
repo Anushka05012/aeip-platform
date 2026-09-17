@@ -1,0 +1,38 @@
+{
+  "name": "aeip-platform",
+  "version": "1.0.0",
+  "description": "AI Engineering Intelligence Platform — Software Engineering Analytics and Failure Intelligence System",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "prisma skills sync || exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SnehalBawanthade/aeip-platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/SnehalBawanthade/aeip-platform/issues"
+  },
+  "homepage": "https://github.com/SnehalBawanthade/aeip-platform#readme",
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.3",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "octokit": "^5.0.5"
+  }
+}

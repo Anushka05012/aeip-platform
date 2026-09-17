@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Repository {
+  id        String   @id @default(uuid())
+  name      String
+  owner     String
+  fullName  String   @unique // e.g. "owner/repo"
+  url       String
+  createdAt DateTime @default(now())
+
+  commits      Commit[]
+  pullRequests PullRequest[]
+  logs         Log[]
+
+  @@map("repositories")
+}
+
+model Commit {
+  id           String   @id @default(uuid())
+  repositoryId String
+  sha          String   @unique
+  authorName   String
+  authorEmail  String
+  message      String
+  filesChanged Int      @default(0)
+  additions    Int      @default(0)
+  deletions    Int      @default(0)
+  committedAt  DateTime
+  createdAt    DateTime @default(now())
+
+  repository Repository @relation(fields: [repositoryId], references: [id])
+  logs       Log[]
+
+  @@index([repositoryId])
+  @@map("commits")
+}
+
+model PullRequest {
+  id           String    @id @default(uuid())
+  repositoryId String
+  number       Int
+  title        String
+  authorName   String
+  state        String    // "open", "closed", "merged"
+  baseBranch   String
+  headBranch   String
+  createdAt    DateTime
+  mergedAt     DateTime?
+  closedAt     DateTime?
+
+  repository Repository @relation(fields: [repositoryId], references: [id])
+  logs       Log[]
+
+  @@unique([repositoryId, number])
+  @@index([repositoryId])
+  @@map("pull_requests")
+}
+
+model Log {
+  id            String   @id @default(uuid())
+  repositoryId  String
+  commitId      String?
+  pullRequestId String?
+  source        String   // e.g. "github_actions", "jenkins"
+  status        String   // "success", "failure", "in_progress"
+  jobName       String
+  rawLog        String?  // full raw log text/URL reference
+  errorSummary  String?
+  startedAt     DateTime
+  finishedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  repository  Repository   @relation(fields: [repositoryId], references: [id])
+  commit      Commit?      @relation(fields: [commitId], references: [id])
+  pullRequest PullRequest? @relation(fields: [pullRequestId], references: [id])
+
+  @@index([repositoryId])
+  @@index([status])
+  @@map("logs")
+}
