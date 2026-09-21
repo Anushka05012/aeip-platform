@@ -8,16 +8,19 @@ documentation (Sept 10 deliverable). Embedding generation, risk scoring,
 and the full RAG retriever come next per the sprint roadmap — see
 "Where this goes next" below.
 
+
 ## Setup
 
 ```bash
 cd services/llm-services
 python3 -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+source .venv/bin/activate     
+# Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# then edit .env and paste in a key from https://console.groq.com/keys
+# then edit .env and paste in a key from https://console groq.com/keys
+
 ```
 
 ## What's in here
@@ -36,7 +39,7 @@ llm-services/
 └── .env.example
 ```
 
-## Try it
+## Run it locally
 
 Run the tests (fast, no API key required):
 
@@ -57,6 +60,27 @@ built-in evidence-grounded fallback:
 ```bash
 python scripts/demo_intelligence_flow.py --ai
 ```
+
+Start the local API used by the Next.js dashboard (no Groq key is required for
+the default offline/evidence-grounded mode):
+
+```bash
+python scripts/serve.py
+```
+
+In a second terminal, start the frontend:
+
+```bash
+cd ../../frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The overview, risk, failures, repository page,
+and assistant now consume `http://localhost:8001`. Set
+`NEXT_PUBLIC_INTELLIGENCE_API_URL` if the service runs elsewhere. The assistant
+uses the deterministic offline summary by default; Groq remains an optional
+server-side enhancement for a later authenticated control.
 
 Ask a repository question and see the exact RAG sources used:
 
