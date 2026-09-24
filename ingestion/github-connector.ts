@@ -1,45 +1,38 @@
 import { Octokit } from "octokit";
-import { PrismaClient } from "@prisma/client";
-import "dotenv/config";
+import prisma from "./prisma-client";
 
-const prisma = new PrismaClient();
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+export async function ingestRepository(owner: string, repo: string) {
+  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-const OWNER = "SnehalBawanthade"; // <-- replace with your actual GitHub username
-const REPO = "aeip-platform";
-
-async function upsertRepository() {
-  const { data } = await octokit.rest.repos.get({ owner: OWNER, repo: REPO });
+  // 1. Get repo metadata, create/find it in DB
+  const { data: repoData } = await octokit.rest.repos.get({ owner, repo });
 
   const repository = await prisma.repository.upsert({
-    where: { fullName: data.full_name },
+    where: { fullName: repoData.full_name },
     update: {},
     create: {
-      name: data.name,
-      owner: data.owner.login,
-      fullName: data.full_name,
-      url: data.html_url,
+      name: repoData.name,
+      owner: repoData.owner.login,
+      fullName: repoData.full_name,
+      url: repoData.html_url,
     },
   });
 
-  return repository;
-}
-
-async function ingestCommits(repositoryId: string) {
+  // 2. Ingest commits
   const { data: commits } = await octokit.rest.repos.listCommits({
-    owner: OWNER,
-    repo: REPO,
+    owner,
+    repo,
     per_page: 50,
   });
 
+  let commitCount = 0;
   for (const c of commits) {
     if (!c.commit.author?.date) continue;
-
     await prisma.commit.upsert({
       where: { sha: c.sha },
       update: {},
       create: {
-        repositoryId,
+        repositoryId: repository.id,
         sha: c.sha,
         authorName: c.commit.author.name ?? "unknown",
         authorEmail: c.commit.author.email ?? "unknown",
@@ -47,29 +40,28 @@ async function ingestCommits(repositoryId: string) {
         committedAt: new Date(c.commit.author.date),
       },
     });
+    commitCount++;
   }
 
-  console.log(`Ingested ${commits.length} commits.`);
-}
-
-async function ingestPullRequests(repositoryId: string) {
+  // 3. Ingest pull requests
   const { data: prs } = await octokit.rest.pulls.list({
-    owner: OWNER,
-    repo: REPO,
+    owner,
+    repo,
     state: "all",
     per_page: 50,
   });
 
+  let prCount = 0;
   for (const pr of prs) {
     await prisma.pullRequest.upsert({
-      where: { repositoryId_number: { repositoryId, number: pr.number } },
+      where: { repositoryId_number: { repositoryId: repository.id, number: pr.number } },
       update: {
         state: pr.merged_at ? "merged" : pr.state,
         mergedAt: pr.merged_at ? new Date(pr.merged_at) : null,
         closedAt: pr.closed_at ? new Date(pr.closed_at) : null,
       },
       create: {
-        repositoryId,
+        repositoryId: repository.id,
         number: pr.number,
         title: pr.title,
         authorName: pr.user?.login ?? "unknown",
@@ -81,27 +73,21 @@ async function ingestPullRequests(repositoryId: string) {
         closedAt: pr.closed_at ? new Date(pr.closed_at) : null,
       },
     });
+    prCount++;
   }
 
-  console.log(`Ingested ${prs.length} pull requests.`);
+  return {
+    repository: repository.fullName,
+    repositoryId: repository.id,
+    commitsIngested: commitCount,
+    pullRequestsIngested: prCount,
+  };
 }
 
-async function main() {
-  console.log("Starting GitHub ingestion...");
-  const repository = await upsertRepository();
-  console.log(`Repository upserted: ${repository.fullName}`);
-
-  await ingestCommits(repository.id);
-  await ingestPullRequests(repository.id);
-
-  console.log("Ingestion complete.");
-}
-
-main()
-  .catch((e) => {
-    console.error("Ingestion failed:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
+export async function listRepositories() {
+  return prisma.repository.findMany({
+    include: {
+      _count: { select: { commits: true, pullRequests: true } },
+    },
   });
+}

@@ -1,10 +1,16 @@
 import express from "express";
 import crypto from "crypto";
-import { PrismaClient } from "@prisma/client";
 import "dotenv/config";
+import { ingestRepository, listRepositories } from "./github-service";
+import cors from "cors";
+import prisma from "./prisma-client";
+
+
 
 const app = express();
-const prisma = new PrismaClient();
+
+
+app.use(cors({ origin: "http://localhost:3000" }));
 
 app.use(
   express.json({
@@ -86,6 +92,31 @@ async function handlePullRequestEvent(body: any) {
 
   console.log(`Normalized PR #${pr.number} (${body.action})`);
 }
+
+app.post("/api/repositories", express.json(), async (req, res) => {
+  const { owner, repo } = req.body;
+
+  if (!owner || !repo) {
+    return res.status(400).json({ error: "owner and repo are required" });
+  }
+
+  try {
+    const result = await ingestRepository(owner, repo);
+    res.status(200).json(result);
+  } catch (err: any) {
+    console.error("Failed to ingest repository:", err.message);
+    res.status(500).json({ error: "Failed to ingest repository", details: err.message });
+  }
+});
+
+app.get("/api/repositories", async (_req, res) => {
+  try {
+    const repos = await listRepositories();
+    res.status(200).json(repos);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch repositories" });
+  }
+});
 
 app.post("/webhooks/github", async (req: any, res) => {
   if (!verifySignature(req)) {
