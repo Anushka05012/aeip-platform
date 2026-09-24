@@ -32,6 +32,7 @@ export type FailureExplanation = {
   mode: "groq" | "offline";
   notes: string[];
   cached: boolean;
+  pull_request?: { number: number; title: string; state: string; base: string } | null;
 };
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type Evidence = { path: string; score: number; content?: string };
@@ -44,6 +45,7 @@ export type RepositorySummary = {
   indexedDocuments: number;
   commits: number;
   ciRuns: number;
+  pullRequests?: number;
   riskyFiles: number;
   analyzedAt: string;
   stages: PipelineStage[];

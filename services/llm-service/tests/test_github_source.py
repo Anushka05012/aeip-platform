@@ -45,6 +45,12 @@ RESPONSES = {
          "steps": [{"name": "Checkout", "conclusion": "success"}, {"name": "Run pytest", "conclusion": "failure"}]},
         {"id": 12, "name": "lint", "conclusion": "success", "steps": []},
     ]},
+    "/repos/octo/app/pulls?state=all&sort=updated&direction=desc&per_page=50": [
+        {"number": 7, "title": "Harden token checks", "state": "closed", "merged_at": "2026-09-20T12:00:00Z",
+         "created_at": "2026-09-18T09:00:00Z", "head": {"ref": "fix/tokens"}, "base": {"ref": "main"}},
+        {"number": 8, "title": "WIP login redesign", "state": "open", "merged_at": None,
+         "created_at": "2026-09-21T09:00:00Z", "head": {"ref": "feature/login"}, "base": {"ref": "main"}},
+    ],
     "/repos/octo/app/check-runs/11/annotations": [
         {"path": "src/auth/login.py", "start_line": 3, "title": "test_login", "message": "AssertionError: missing token not rejected"},
     ],
@@ -97,16 +103,41 @@ def test_github_snapshot_contains_commits_ci_runs_and_chunked_source():
     assert snapshot.repository == "octo/app"
     assert [commit.files for commit in snapshot.commits] == [("src/auth/login.py",), ("src/auth/login.py",)]
     assert [item.status for item in snapshot.deployments] == ["failure", "success"]
+    assert [(item.number, item.state) for item in snapshot.pull_requests] == [(7, "merged"), (8, "open")]
     paths = {document.path for document in snapshot.documents}
-    assert {"src/auth/login.py", "README.md", "history/commits", "history/ci-failures"} <= paths
+    assert {"src/auth/login.py", "README.md", "history/commits", "history/ci-failures", "history/pull-requests"} <= paths
     assert not any("node_modules" in path for path in paths)
 
 
+def test_failed_run_on_a_pr_branch_is_linked_to_that_pull_request():
+    from datetime import datetime, timezone
+
+    from src.domain import Deployment
+    from src.failure_analysis import build_evidence
+
+    snapshot = source().load_snapshot("octo/app")
+    run = Deployment("9", datetime(2026, 9, 21, 12, tzinfo=timezone.utc), "c2", "failure",
+                     name="CI", branch="feature/login", event="pull_request", log="FAILED test_login")
+    evidence = build_evidence(run, None, [], snapshot.pull_requests)
+    assert evidence.pull_request == {"number": 8, "title": "WIP login redesign", "state": "open", "base": "main"}
+    on_main = build_evidence(Deployment("10", run.deployed_at, "c2", "failure", branch="main"), None, [], snapshot.pull_requests)
+    assert on_main.pull_request is None
+
+
 def test_analyzed_github_repository_supports_risk_and_rag(tmp_path):
-    service = IntelligenceDemoService(cache_dir=tmp_path, github_factory=source)
+    synced = []
+
+    def fake_database_sync(repository):
+        synced.append(repository)
+        return {"stage": "Database (PostgreSQL)", "detail": "2 commits and 2 pull requests stored", "ms": 1}
+
+    service = IntelligenceDemoService(cache_dir=tmp_path, github_factory=source, database_sync=fake_database_sync)
     summary = service.analyze_repository("octo/app")
     assert summary["commits"] == 2
-    assert any(stage["stage"] == "Risk scoring" for stage in summary["stages"])
+    assert summary["pullRequests"] == 2
+    assert synced == ["octo/app"]
+    stages = [stage["stage"] for stage in summary["stages"]]
+    assert "Pull requests" in stages and "Database (PostgreSQL)" in stages and "Risk scoring" in stages
     assert (tmp_path / "octo__app.json").exists()
 
     overview = service.overview("octo/app")
@@ -123,5 +154,15 @@ def test_analyzed_github_repository_supports_risk_and_rag(tmp_path):
     assert (tmp_path / "explanations" / "octo__app__1.json").exists()
 
     # A restarted service reloads the cached analysis without calling GitHub.
-    reloaded = IntelligenceDemoService(cache_dir=tmp_path, github_factory=lambda: None)
+    reloaded = IntelligenceDemoService(cache_dir=tmp_path, github_factory=lambda: None, database_sync=None)
     assert reloaded.overview("octo/app")["repository"] == "octo/app"
+    assert reloaded.list_repositories()["repositories"][0]["pullRequests"] == 2
+
+
+def test_database_sync_reports_when_ingestion_service_is_down(monkeypatch):
+    from src.web_api import sync_to_database
+
+    monkeypatch.setenv("INGESTION_API_URL", "http://127.0.0.1:9")  # nothing listens on the discard port
+    stage = sync_to_database("octo/app")
+    assert stage["stage"] == "Database (PostgreSQL)"
+    assert stage["detail"].startswith("skipped: ingestion service not running")

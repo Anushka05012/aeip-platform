@@ -48,6 +48,12 @@ llm-services/
 3. The repository becomes active: Overview, Risk, Failures and the Assistant all use it.
 
 Terminal equivalent: `python scripts/analyze_github.py owner/repo "your question"`.
+
+**Database (PostgreSQL).** Each analysis also asks the ingestion service
+(`ingestion/webhook-listener.ts`, port 4000) to store the repository's commits
+and pull requests in PostgreSQL through Prisma. Start it from the repo root with
+`DATABASE_URL` set: `npx tsx ingestion/webhook-listener.ts`. If it isn't
+running, the pipeline log records the step as skipped and analysis continues.
 Analyses are cached in `data/cache/`, so they survive restarts and network loss.
 Set `GITHUB_TOKEN` in `.env` (anonymous GitHub allows ~1 analysis per hour) and
 `GROQ_API_KEY` for LLM-written answers (otherwise answers are extractive).

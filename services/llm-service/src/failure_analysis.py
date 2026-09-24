@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Sequence
 
-from .domain import Commit, Deployment
+from .domain import Commit, Deployment, PullRequest
 from .rag import RepositoryRetriever
 from .risk_engine import RiskResult
 from .risk_summary import ChatClient
@@ -137,6 +137,7 @@ class FailureEvidence:
     failed_jobs: list[dict[str, Any]]
     error_lines: list[str]
     log_source: str  # "job log", "annotations", or "none"
+    pull_request: dict[str, Any] | None = None  # the PR whose branch this run built, if any
 
 
 @dataclass
@@ -160,12 +161,24 @@ class FailureExplanation:
     log_source: str
     mode: str
     notes: list[str] = field(default_factory=list)
+    pull_request: dict[str, Any] | None = None
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def build_evidence(deployment: Deployment, commit: Commit | None, failed_jobs: Sequence[Any]) -> FailureEvidence:
+def find_pull_request(deployment: Deployment, pull_requests: Sequence[PullRequest]) -> PullRequest | None:
+    """The PR whose head branch this run built (CI ↔ PR correlation)."""
+    if not deployment.branch:
+        return None
+    matches = [item for item in pull_requests if item.head_branch == deployment.branch]
+    # Prefer a PR that was open when the run happened, else the most recent one on that branch.
+    active = [item for item in matches if item.created_at <= deployment.deployed_at] or matches
+    return max(active, key=lambda item: item.created_at, default=None)
+
+
+def build_evidence(deployment: Deployment, commit: Commit | None, failed_jobs: Sequence[Any],
+                   pull_requests: Sequence[PullRequest] = ()) -> FailureEvidence:
     jobs, texts = [], []
     log_source = "none"
     for job in failed_jobs:
@@ -181,12 +194,15 @@ def build_evidence(deployment: Deployment, commit: Commit | None, failed_jobs: S
         texts.append(deployment.log)
         log_source = "job log"
     raw = redact_secrets("\n".join(texts))
+    pull_request = find_pull_request(deployment, pull_requests)
     return FailureEvidence(
         run_id=deployment.id, workflow=deployment.name or "workflow", branch=deployment.branch,
         event=deployment.event, commit_sha=deployment.commit_sha,
         commit_message=(commit.message.splitlines()[0] if commit and commit.message else ""),
         changed_files=list(commit.files) if commit else [],
-        failed_jobs=jobs, error_lines=extract_error_lines(raw) if raw.strip() else [], log_source=log_source)
+        failed_jobs=jobs, error_lines=extract_error_lines(raw) if raw.strip() else [], log_source=log_source,
+        pull_request={"number": pull_request.number, "title": pull_request.title, "state": pull_request.state,
+                      "base": pull_request.base_branch} if pull_request else None)
 
 
 def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float, str, list[str], list[str]]:
@@ -203,6 +219,9 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
         signals.append("Error output contains infrastructure/flaky markers (timeouts, network, rate limits)")
     if evidence.event == "schedule":
         signals.append("Run was triggered by a schedule, not by a code change")
+    if evidence.pull_request:
+        pr = evidence.pull_request
+        signals.append(f"Run built the branch of pull request #{pr['number']} \"{pr['title']}\" ({pr['state']}, into {pr['base']})")
     if not commit_known:
         signals.append("Triggering commit is outside the fetched history, so its changes are unknown")
     elif not source_changed:
@@ -243,6 +262,8 @@ def _llm_judgement(evidence: FailureEvidence, heuristic: dict[str, Any], risks: 
     prompt = (
         f"Workflow: {evidence.workflow} | branch: {evidence.branch or 'n/a'} | trigger: {evidence.event or 'n/a'}\n"
         f"Triggering commit: {evidence.commit_sha[:7]} \"{evidence.commit_message}\"\n"
+        + (f"Pull request: #{evidence.pull_request['number']} \"{evidence.pull_request['title']}\" "
+           f"({evidence.pull_request['state']})\n" if evidence.pull_request else "") +
         f"Changed files: {', '.join(evidence.changed_files[:30]) or 'unknown'}\n"
         f"Failed jobs/steps: {json.dumps(evidence.failed_jobs)}\n\n"
         f"Deterministic correlation (rule-based): verdict={heuristic['verdict']}, category={heuristic['category']}\n"
@@ -274,8 +295,8 @@ def _llm_judgement(evidence: FailureEvidence, heuristic: dict[str, Any], risks: 
 class FailureAnalyzer:
     def explain(self, deployment: Deployment, commit: Commit | None, failed_jobs: Sequence[Any],
                 risks: Sequence[RiskResult], retriever: RepositoryRetriever,
-                client: ChatClient | None = None) -> FailureExplanation:
-        evidence = build_evidence(deployment, commit, failed_jobs)
+                client: ChatClient | None = None, pull_requests: Sequence[PullRequest] = ()) -> FailureExplanation:
+        evidence = build_evidence(deployment, commit, failed_jobs, pull_requests)
         verdict, confidence, category, signals, mentioned = correlate(evidence, commit is not None)
         risk_by_path = {risk.path: risk for risk in risks}
         changed_risks = [risk_by_path[path] for path in evidence.changed_files if path in risk_by_path]
@@ -323,7 +344,8 @@ class FailureAnalyzer:
             ],
             error_lines=evidence.error_lines[-15:],
             evidence=[{"path": item.path, "score": item.score} for item in code],
-            failed_jobs=evidence.failed_jobs, log_source=evidence.log_source, mode=mode, notes=notes)
+            failed_jobs=evidence.failed_jobs, log_source=evidence.log_source, mode=mode, notes=notes,
+            pull_request=evidence.pull_request)
 
     @staticmethod
     def _offline_explanation(evidence: FailureEvidence, verdict: str, category: str, mentioned: list[str]) -> str:

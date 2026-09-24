@@ -8,8 +8,11 @@ live demo) does not lose it.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from http import HTTPStatus
@@ -60,6 +63,30 @@ class AnalyzedRepository:
     stages: list[dict[str, Any]] = field(default_factory=list)
 
 
+def sync_to_database(repository: str) -> dict[str, Any]:
+    """Store the repository's commits and PRs in PostgreSQL via the ingestion service (ingestion/).
+
+    Best-effort: analysis never fails because the database layer is down; the pipeline
+    log records what happened instead.
+    """
+    base = os.getenv("INGESTION_API_URL", "http://localhost:4000").rstrip("/")
+    owner, repo = repository.split("/", 1)
+    request = urllib.request.Request(
+        f"{base}/api/repositories", data=json.dumps({"owner": owner, "repo": repo}).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    started = time.perf_counter()
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            body = json.loads(response.read() or b"{}")
+        detail = (f"{body.get('commitsIngested', 0)} commits and {body.get('pullRequestsIngested', 0)} "
+                  "pull requests stored via the ingestion service")
+    except urllib.error.HTTPError as exc:
+        detail = f"failed: ingestion service returned HTTP {exc.code}"
+    except (urllib.error.URLError, OSError):
+        detail = f"skipped: ingestion service not running at {base}"
+    return {"stage": "Database (PostgreSQL)", "detail": detail, "ms": round((time.perf_counter() - started) * 1000)}
+
+
 def groq_client_if_configured():
     """Return a Groq client when a real key is configured, else None (offline mode)."""
     try:
@@ -78,9 +105,11 @@ class IntelligenceDemoService:
     """Adapts the RAG pipeline to frontend-friendly JSON payloads."""
 
     def __init__(self, cache_dir: Path | None = CACHE_DIR,
-                 github_factory: Callable[[], GitHubDataSource] = GitHubDataSource) -> None:
+                 github_factory: Callable[[], GitHubDataSource] = GitHubDataSource,
+                 database_sync: Callable[[str], dict[str, Any]] | None = sync_to_database) -> None:
         self.cache_dir = cache_dir
         self.github_factory = github_factory
+        self.database_sync = database_sync
         self.assistant = RepositoryAssistant()
         self.failure_analyzer = FailureAnalyzer()
         self.repositories: dict[str, AnalyzedRepository] = {}
@@ -166,6 +195,7 @@ class IntelligenceDemoService:
             "indexedDocuments": entry.indexed,
             "commits": len(entry.snapshot.commits),
             "ciRuns": len(entry.snapshot.deployments),
+            "pullRequests": len(entry.snapshot.pull_requests),
             "riskyFiles": len(entry.risks),
             "analyzedAt": entry.analyzed_at,
             "stages": entry.stages,
@@ -187,6 +217,8 @@ class IntelligenceDemoService:
                 pass
         source = self.github_factory()
         snapshot = source.load_snapshot(repository)
+        if self.database_sync:
+            source.report.stages.append(self.database_sync(snapshot.repository))
         analyzed_at = datetime.now().astimezone().isoformat(timespec="seconds")
         entry = self._register(snapshot, "GitHub (live)", source.report.stages, analyzed_at=analyzed_at)
         if self.cache_dir:
@@ -282,7 +314,7 @@ class IntelligenceDemoService:
                 notes.append(f"Could not fetch job details from GitHub: {exc}")
         client = groq_client_if_configured() if use_ai else None
         result = self.failure_analyzer.explain(deployment, commit, failed_jobs, entry.risks,
-                                               entry.pipeline.retriever, client)
+                                               entry.pipeline.retriever, client, entry.snapshot.pull_requests)
         result.notes = notes + result.notes
         payload = result.to_json()
         if cache_file and not notes:  # don't cache an analysis that was missing GitHub data

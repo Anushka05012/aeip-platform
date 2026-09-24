@@ -35,6 +35,10 @@ function Report({ result, onRefresh, busy }: { result: FailureExplanation; onRef
     <p className="mt-2 font-mono text-[12px] text-muted">
       {shortSha(result.commit)}{result.commit_message && <> · <span className="font-sans">{result.commit_message}</span></>}
     </p>
+    {result.pull_request && <p className="mt-1 text-[12.5px] text-ink-2">
+      Pull request <span className="font-mono">#{result.pull_request.number}</span> · {result.pull_request.title}{" "}
+      <span className="text-muted">({result.pull_request.state}, into {result.pull_request.base})</span>
+    </p>}
     {result.needs_review && <div className="mt-3"><Notice tone="warn">Low confidence: a person should confirm this before anyone acts on it.</Notice></div>}
 
     <div className="mt-5">

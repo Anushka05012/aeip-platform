@@ -28,7 +28,7 @@ from pathlib import PurePosixPath
 from typing import Any, Callable
 
 from .chunker import CODE_EXTENSIONS, DOC_EXTENSIONS, get_chunker_for_file
-from .domain import Commit, Deployment, Document, RepositorySnapshot
+from .domain import Commit, Deployment, Document, PullRequest, RepositorySnapshot
 
 API = "https://api.github.com"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$")
@@ -118,10 +118,11 @@ class FailedJob:
 
 class GitHubDataSource:
     def __init__(self, token: str | None = None, max_commits: int = 40, max_runs: int = 60,
-                 max_files: int = 500, opener: Callable[..., Any] | None = None):
+                 max_files: int = 500, max_prs: int = 50, opener: Callable[..., Any] | None = None):
         self.token = token if token is not None else os.getenv("GITHUB_TOKEN", "")
         self.max_commits = max_commits
         self.max_runs = max_runs
+        self.max_prs = max_prs
         self.max_files = max_files
         self._open = opener or urllib.request.build_opener(_DropAuthOnRedirect()).open
         self.report = FetchReport()
@@ -185,9 +186,28 @@ class GitHubDataSource:
 
         commits = self._commits(repository, branch)
         deployments = self._workflow_runs(repository)
+        pull_requests = self._pull_requests(repository)
         documents = self._documents(repository, branch)
-        documents += self._history_documents(commits, deployments)
-        return RepositorySnapshot(repository, tuple(commits), tuple(deployments), tuple(documents), branch)
+        documents += self._history_documents(commits, deployments, pull_requests)
+        return RepositorySnapshot(repository, tuple(commits), tuple(deployments), tuple(documents), branch,
+                                  tuple(pull_requests))
+
+    def _pull_requests(self, repository: str) -> list[PullRequest]:
+        started = time.perf_counter()
+        listing = self._json(f"/repos/{repository}/pulls?state=all&sort=updated&direction=desc&per_page={self.max_prs}")
+        pull_requests = [
+            PullRequest(
+                number=item["number"], title=item["title"],
+                state="merged" if item.get("merged_at") else item["state"],
+                head_branch=item["head"]["ref"], base_branch=item["base"]["ref"],
+                created_at=_parse_time(item["created_at"]),
+                merged_at=_parse_time(item["merged_at"]) if item.get("merged_at") else None,
+            )
+            for item in listing
+        ]
+        merged = sum(1 for item in pull_requests if item.state == "merged")
+        self.report.add("Pull requests", f"{len(pull_requests)} pull requests ({merged} merged)", started)
+        return pull_requests
 
     def _commits(self, repository: str, branch: str) -> list[Commit]:
         started = time.perf_counter()
@@ -263,8 +283,9 @@ class GitHubDataSource:
         return documents
 
     @staticmethod
-    def _history_documents(commits: list[Commit], deployments: list[Deployment]) -> list[Document]:
-        """Commit and CI history as searchable text, so RAG can answer "what changed" questions."""
+    def _history_documents(commits: list[Commit], deployments: list[Deployment],
+                           pull_requests: list[PullRequest] = ()) -> list[Document]:
+        """Commit, PR and CI history as searchable text, so RAG can answer "what changed" questions."""
         documents: list[Document] = []
         for start in range(0, len(commits), 10):
             lines = [
@@ -283,4 +304,11 @@ class GitHubDataSource:
                 for item in failures[:25]
             ]
             documents.append(Document("history/ci-failures", "CI/CD build failures\n" + "\n".join(lines), "history"))
+        for start in range(0, len(pull_requests), 15):
+            lines = [
+                f"Pull request #{item.number} [{item.state}] {item.title} ({item.head_branch} -> {item.base_branch}),"
+                f" opened {item.created_at:%Y-%m-%d}" + (f", merged {item.merged_at:%Y-%m-%d}" if item.merged_at else "")
+                for item in pull_requests[start:start + 15]
+            ]
+            documents.append(Document("history/pull-requests", "Pull requests\n" + "\n".join(lines), "history"))
         return documents

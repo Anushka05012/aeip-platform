@@ -3,24 +3,42 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { analyzeRepository, listRepositories, setActiveRepository } from "@/lib/intelligenceApi";
+import { listRepositories as listStoredRepositories } from "@/lib/ingestionApi";
 import { useActiveRepository } from "@/lib/useActiveRepository";
 import { formatMs, relativeTime } from "@/lib/format";
 import { Badge, Button, Notice, PageHeader, Panel, td, th } from "@/components/ui";
-import { RepositorySummary } from "@/types";
+import { Repository, RepositorySummary } from "@/types";
 
-const PIPELINE = ["Connect to GitHub", "Commits and churn", "CI runs", "Source and chunking", "Embeddings", "Risk scoring", "DORA metrics"];
+const PIPELINE = ["Connect to GitHub", "Commits and churn", "CI runs", "Pull requests", "Source and chunking",
+  "Save to database", "Embeddings", "Risk scoring", "DORA metrics"];
+
+/** Repositories stored in PostgreSQL by the ingestion service, or "offline" when it isn't running. */
+type Stored = Map<string, Repository> | "offline" | null;
 
 function PipelineLog({ summary }: { summary: RepositorySummary }) {
   const total = summary.stages.reduce((sum, stage) => sum + stage.ms, 0);
   return <div className="bg-ink text-[#e8e6e1] rounded-[5px] p-4 font-mono text-[12px] leading-[1.8] overflow-x-auto">
     <p className="text-[#a8a49a]">$ aeip analyze {summary.repository}</p>
     {summary.stages.map((stage) => <p key={stage.stage} className="whitespace-nowrap">
-      <span className="text-[#7fd1a4]">✓</span> <span className="inline-block w-[210px]">{stage.stage}</span>
+      {/^(skipped|failed)/.test(stage.detail) ? <span className="text-[#e0b25c]">–</span> : <span className="text-[#7fd1a4]">✓</span>}{" "}
+      <span className="inline-block w-[210px]">{stage.stage}</span>
       <span className="inline-block w-[70px] text-right text-[#a8a49a]">{formatMs(stage.ms)}</span>
       <span className="ml-4">{stage.detail}</span>
     </p>)}
     <p className="text-[#a8a49a]">done in {formatMs(total)}</p>
   </div>;
+}
+
+function DatabaseCell({ stored, repository }: { stored: Stored; repository: string }) {
+  if (stored === null) return <span className="text-muted">…</span>;
+  if (stored === "offline") return <span className="text-muted"
+    title="Ingestion service (:4000) not running, or it cannot reach PostgreSQL. Start: npx tsx ingestion/webhook-listener.ts with DATABASE_URL set">unavailable</span>;
+  const row = stored.get(repository.toLowerCase());
+  if (!row) return <span className="text-muted">not stored</span>;
+  return <span title={`${row._count.commits} commits and ${row._count.pullRequests} pull requests in PostgreSQL`}>
+    <Badge tone="good">stored</Badge>{" "}
+    <span className="text-[12px] text-ink-2 font-mono">{row._count.commits}c · {row._count.pullRequests}pr</span>
+  </span>;
 }
 
 export default function RepositoriesPage() {
@@ -32,8 +50,14 @@ export default function RepositoriesPage() {
   const [step, setStep] = useState(0);
   const [latest, setLatest] = useState<RepositorySummary | null>(null);
   const [error, setError] = useState("");
+  const [stored, setStored] = useState<Stored>(null);
 
-  const refresh = () => listRepositories().then((data) => setRepositories(data.repositories)).catch((reason: Error) => setError(reason.message));
+  const refresh = () => Promise.all([
+    listRepositories().then((data) => setRepositories(data.repositories)).catch((reason: Error) => setError(reason.message)),
+    listStoredRepositories()
+      .then((rows) => setStored(new Map(rows.map((row) => [row.fullName.toLowerCase(), row]))))
+      .catch(() => setStored("offline")),
+  ]);
   useEffect(() => { refresh(); }, []);
 
   // The backend call is a single request, so the step list is paced client-side.
@@ -69,7 +93,7 @@ export default function RepositoriesPage() {
   const isActive = (repo: RepositorySummary) => repo.repository === active || (!active && repo.source === "demo fixture");
 
   return <div className="flex flex-col gap-6">
-    <PageHeader title="Repositories" meta="Analysing a repository pulls its commits, CI runs and source from GitHub, then indexes, scores and summarises it." />
+    <PageHeader title="Repositories" meta="Analysing a repository pulls its commits, pull requests, CI runs and source from GitHub, stores them in PostgreSQL, then indexes, scores and summarises it." />
 
     <Panel title="Analyse a GitHub repository">
       <form className="flex gap-2 flex-wrap" onSubmit={(event) => { event.preventDefault(); analyze(input); }}>
@@ -104,8 +128,10 @@ export default function RepositoriesPage() {
             <th className={th}>Repository</th>
             <th className={`${th} text-right`}>Commits</th>
             <th className={`${th} text-right`}>CI runs</th>
+            <th className={`${th} text-right`}>Pull requests</th>
             <th className={`${th} text-right`}>Chunks</th>
             <th className={`${th} text-right`}>Scored files</th>
+            <th className={th} title="Stored in PostgreSQL by the ingestion service (:4000)">Database</th>
             <th className={th}>Analysed</th>
             <th className={th}><span className="sr-only">Actions</span></th>
           </tr></thead>
@@ -120,8 +146,10 @@ export default function RepositoriesPage() {
               </td>
               <td className={`${td} text-right font-mono`}>{repo.commits}</td>
               <td className={`${td} text-right font-mono`}>{repo.ciRuns}</td>
+              <td className={`${td} text-right font-mono`}>{repo.pullRequests ?? "–"}</td>
               <td className={`${td} text-right font-mono`}>{repo.indexedDocuments}</td>
               <td className={`${td} text-right font-mono`}>{repo.riskyFiles}</td>
+              <td className={`${td} whitespace-nowrap`}><DatabaseCell stored={stored} repository={repo.repository} /></td>
               <td className={`${td} text-ink-2 whitespace-nowrap`}>{repo.source === "demo fixture" ? "–" : relativeTime(repo.analyzedAt)}</td>
               <td className={`${td} text-right whitespace-nowrap`}>
                 <div className="inline-flex gap-1.5">

@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .domain import Commit, Deployment, Document, RepositorySnapshot
+from .domain import Commit, Deployment, Document, PullRequest, RepositorySnapshot
 
 
 class JsonSeedDataSource:
@@ -42,7 +42,16 @@ def snapshot_from_json(raw: dict[str, Any]) -> RepositorySnapshot:
         for item in raw["deployments"]
     )
     documents = tuple(Document(**item) for item in raw["documents"])
-    return RepositorySnapshot(raw["repository"], commits, deployments, documents, raw.get("default_branch", ""))
+    pull_requests = tuple(
+        PullRequest(
+            number=item["number"], title=item["title"], state=item["state"],
+            head_branch=item["head_branch"], base_branch=item["base_branch"],
+            created_at=datetime.fromisoformat(item["created_at"]),
+            merged_at=datetime.fromisoformat(item["merged_at"]) if item.get("merged_at") else None)
+        for item in raw.get("pull_requests", [])
+    )
+    return RepositorySnapshot(raw["repository"], commits, deployments, documents, raw.get("default_branch", ""),
+                              pull_requests)
 
 
 def snapshot_to_json(snapshot: RepositorySnapshot) -> dict[str, Any]:
@@ -67,5 +76,13 @@ def snapshot_to_json(snapshot: RepositorySnapshot) -> dict[str, Any]:
         "documents": [
             {"path": item.path, "content": item.content, "source_type": item.source_type}
             for item in snapshot.documents
+        ],
+        "pull_requests": [
+            {
+                "number": item.number, "title": item.title, "state": item.state, "head_branch": item.head_branch,
+                "base_branch": item.base_branch, "created_at": item.created_at.isoformat(),
+                "merged_at": item.merged_at.isoformat() if item.merged_at else None,
+            }
+            for item in snapshot.pull_requests
         ],
     }

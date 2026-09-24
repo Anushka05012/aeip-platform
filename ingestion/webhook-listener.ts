@@ -1,16 +1,13 @@
 import express from "express";
-import crypto from "crypto";
 import "dotenv/config";
 import { ingestRepository, listRepositories } from "./github-service";
 import cors from "cors";
 import prisma from "./prisma-client";
-
-
+import { verifySignature } from "./signature";
 
 const app = express();
 
-
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ origin: ["http://localhost:3000", "http://127.0.0.1:3000"] }));
 
 app.use(
   express.json({
@@ -20,16 +17,7 @@ app.use(
   })
 );
 
-function verifySignature(req: any): boolean {
-  const signature = req.headers["x-hub-signature-256"] as string | undefined;
-  if (!signature) return false;
-
-  const secret = process.env.GITHUB_WEBHOOK_SECRET!;
-  const hmac = crypto.createHmac("sha256", secret);
-  const digest = "sha256=" + hmac.update(req.rawBody).digest("hex");
-
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
-}
+const REPO_PART = /^[A-Za-z0-9._-]{1,100}$/;
 
 async function getOrCreateRepository(repoPayload: any) {
   return prisma.repository.upsert({
@@ -93,11 +81,11 @@ async function handlePullRequestEvent(body: any) {
   console.log(`Normalized PR #${pr.number} (${body.action})`);
 }
 
-app.post("/api/repositories", express.json(), async (req, res) => {
-  const { owner, repo } = req.body;
+app.post("/api/repositories", async (req, res) => {
+  const { owner, repo } = req.body ?? {};
 
-  if (!owner || !repo) {
-    return res.status(400).json({ error: "owner and repo are required" });
+  if (typeof owner !== "string" || typeof repo !== "string" || !REPO_PART.test(owner) || !REPO_PART.test(repo)) {
+    return res.status(400).json({ error: "owner and repo are required, e.g. { owner: 'facebook', repo: 'react' }" });
   }
 
   try {
@@ -105,6 +93,9 @@ app.post("/api/repositories", express.json(), async (req, res) => {
     res.status(200).json(result);
   } catch (err: any) {
     console.error("Failed to ingest repository:", err.message);
+    // Octokit errors carry the GitHub HTTP status; surface the useful ones instead of a blanket 500.
+    if (err.status === 404) return res.status(404).json({ error: "Repository not found or not accessible with GITHUB_TOKEN" });
+    if (err.status === 403 || err.status === 429) return res.status(429).json({ error: "GitHub rate limit reached; set GITHUB_TOKEN" });
     res.status(500).json({ error: "Failed to ingest repository", details: err.message });
   }
 });
@@ -119,7 +110,7 @@ app.get("/api/repositories", async (_req, res) => {
 });
 
 app.post("/webhooks/github", async (req: any, res) => {
-  if (!verifySignature(req)) {
+  if (!verifySignature(req.rawBody, req.headers["x-hub-signature-256"], process.env.GITHUB_WEBHOOK_SECRET)) {
     console.warn("Rejected webhook: invalid signature");
     return res.status(401).send("Invalid signature");
   }

@@ -31,6 +31,17 @@ class Deployment:
 
 
 @dataclass(frozen=True)
+class PullRequest:
+    number: int
+    title: str
+    state: str  # "open", "closed" or "merged"
+    head_branch: str
+    base_branch: str
+    created_at: datetime
+    merged_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class Document:
     path: str
     content: str
@@ -44,6 +55,7 @@ class RepositorySnapshot:
     deployments: tuple[Deployment, ...]
     documents: tuple[Document, ...]
     default_branch: str = ""
+    pull_requests: tuple[PullRequest, ...] = ()
 
 
 class AnalyticsDataSource(Protocol):
