@@ -1,7 +1,5 @@
 import { Octokit } from "octokit";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "./prisma-client";
 
 export async function ingestRepository(owner: string, repo: string) {
   const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });

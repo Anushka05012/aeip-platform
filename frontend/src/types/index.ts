@@ -24,3 +24,20 @@ export type AssistantAnswer = {
   evidence: Evidence[];
   mode: "offline" | "groq";
 };
+
+export type Repository = {
+  id: string;
+  name: string;
+  owner: string;
+  fullName: string;
+  url: string;
+  createdAt: string;
+  _count: { commits: number; pullRequests: number };
+};
+
+export type IngestResult = {
+  repository: string;
+  repositoryId: string;
+  commitsIngested: number;
+  pullRequestsIngested: number;
+};

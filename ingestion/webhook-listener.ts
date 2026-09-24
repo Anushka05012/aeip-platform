@@ -1,11 +1,16 @@
 import express from "express";
 import crypto from "crypto";
-import { PrismaClient } from "@prisma/client";
 import "dotenv/config";
 import { ingestRepository, listRepositories } from "./github-service";
+import cors from "cors";
+import prisma from "./prisma-client";
+
+
 
 const app = express();
-const prisma = new PrismaClient();
+
+
+app.use(cors({ origin: "http://localhost:3000" }));
 
 app.use(
   express.json({
