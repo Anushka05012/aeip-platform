@@ -1,30 +1,52 @@
 import { RiskItem } from "@/types";
+import { Badge, levelTone, ScoreBar, td, th } from "@/components/ui";
 
-function RiskBar({ score }: { score: number }) {
-    const color = score > 80 ? "#F0655A" : score > 55 ? "#F0A93F" : "#3FD6B0";
+function levelOf(item: RiskItem) {
+    return item.level ?? (item.score >= 70 ? "high" : item.score >= 40 ? "medium" : "low");
+}
+
+/** Full risk table: every signal that feeds the score is visible, not just the score. */
+export function RiskTable({ items }: { items: RiskItem[] }) {
     return (
-        <div className="w-full h-1.5 bg-[#1D212B] rounded-full overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${score}%`, background: color }} />
+        <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13px]">
+                <thead>
+                    <tr>
+                        <th className={th}>File</th>
+                        <th className={`${th} w-[190px]`}>Risk score</th>
+                        <th className={th}>Level</th>
+                        <th className={`${th} text-right`}>Changes</th>
+                        <th className={`${th} text-right`}>Lines churned</th>
+                        <th className={`${th} text-right`}>Complexity Δ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.map((item) => (
+                        <tr key={item.file} className="hover:bg-paper">
+                            <td className={`${td} font-mono text-[12.5px] text-ink break-all`}>{item.file}</td>
+                            <td className={td}><ScoreBar score={item.score} /></td>
+                            <td className={td}><Badge tone={levelTone(levelOf(item))}>{levelOf(item)}</Badge></td>
+                            <td className={`${td} text-right font-mono`}>{item.changes ?? "–"}</td>
+                            <td className={`${td} text-right font-mono`}>{item.churn?.toLocaleString("en-IN") ?? "–"}</td>
+                            <td className={`${td} text-right font-mono`}>{item.complexity === undefined ? "–" : item.complexity > 0 ? `+${item.complexity}` : item.complexity}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }
 
+/** Compact list for the overview page. */
 export default function RiskList({ items }: { items: RiskItem[] }) {
     return (
-        <div className="bg-[#12151C] border border-[#232833] rounded-md p-5 flex flex-col">
-            <span className="text-[13px] text-[#B4B9C2] mb-4">Risk intelligence</span>
-            <div className="flex flex-col gap-4">
-                {items.map((r) => (
-                    <div key={r.file} className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between">
-                            <span className="font-mono text-[11.5px] text-[#B4B9C2] truncate max-w-[160px]">{r.file}</span>
-                            <span className="font-mono text-[11.5px] text-[#8B93A1]">{r.score}</span>
-                        </div>
-                        <RiskBar score={r.score} />
-                        <span className="text-[11px] text-[#5B6270]">{r.reason}</span>
-                    </div>
-                ))}
-            </div>
-        </div>
+        <ul className="divide-y divide-line">
+            {items.map((item) => (
+                <li key={item.file} className="px-4 py-2.5 flex items-center gap-3">
+                    <span className="flex-1 min-w-0 font-mono text-[12.5px] text-ink truncate" title={item.file}>{item.file}</span>
+                    <div className="w-[150px] shrink-0"><ScoreBar score={item.score} /></div>
+                </li>
+            ))}
+        </ul>
     );
 }

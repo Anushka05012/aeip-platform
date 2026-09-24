@@ -15,6 +15,7 @@ class Commit:
     additions: int
     deletions: int
     complexity_delta: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,10 @@ class Deployment:
     deployed_at: datetime
     commit_sha: str
     status: str  # "success" or "failure"
+    name: str = ""
+    branch: str = ""
+    event: str = ""  # what triggered the CI run: "push", "schedule", "pull_request", ...
+    log: str = ""  # stored CI log text, when the source provides it (demo fixture)
 
 
 @dataclass(frozen=True)
@@ -38,6 +43,7 @@ class RepositorySnapshot:
     commits: tuple[Commit, ...]
     deployments: tuple[Deployment, ...]
     documents: tuple[Document, ...]
+    default_branch: str = ""
 
 
 class AnalyticsDataSource(Protocol):

@@ -10,9 +10,11 @@
   ],
   "deployments": [
     {"id": "d1", "deployed_at": "2026-09-11T18:00:00", "commit_sha": "a1", "status": "success"},
-    {"id": "d2", "deployed_at": "2026-09-12T18:00:00", "commit_sha": "a2", "status": "failure"},
-    {"id": "d3", "deployed_at": "2026-09-14T18:00:00", "commit_sha": "a4", "status": "success"},
-    {"id": "d4", "deployed_at": "2026-09-15T18:00:00", "commit_sha": "a5", "status": "failure"}
+    {"id": "d2", "deployed_at": "2026-09-12T18:00:00", "commit_sha": "a2", "status": "failure", "name": "Tests", "branch": "main", "event": "push",
+     "log": "2026-09-12T17:58:01.1000000Z ============================= test session starts ==============================\n2026-09-12T17:58:03.2000000Z tests/test_routes.py::test_payment_route PASSED\n2026-09-12T17:58:03.4000000Z tests/test_payments.py::test_duplicate_charge_is_idempotent FAILED\n2026-09-12T17:58:03.5000000Z ___________________ test_duplicate_charge_is_idempotent ___________________\n2026-09-12T17:58:03.5000000Z     def test_duplicate_charge_is_idempotent():\n2026-09-12T17:58:03.5000000Z >       assert gateway.charges == 1\n2026-09-12T17:58:03.5000000Z E       AssertionError: assert 2 == 1\n2026-09-12T17:58:03.5000000Z src/payment_service.py:4: in process_payment\n2026-09-12T17:58:03.6000000Z     return gateway.charge(order.total)\n2026-09-12T17:58:03.7000000Z GROQ_API_KEY=gsk_live_0123456789abcdefghijklmnop\n2026-09-12T17:58:03.9000000Z =========================== 1 failed, 11 passed in 2.41s ===========================\n2026-09-12T17:58:04.0000000Z ##[error]Process completed with exit code 1."},
+    {"id": "d3", "deployed_at": "2026-09-14T18:00:00", "commit_sha": "a4", "status": "success", "name": "Tests", "branch": "main", "event": "push"},
+    {"id": "d4", "deployed_at": "2026-09-15T18:00:00", "commit_sha": "a5", "status": "failure", "name": "Deploy", "branch": "main", "event": "push",
+     "log": "2026-09-15T17:59:10.0000000Z Pushing image registry.example.com/payments-api:a5\n2026-09-15T17:59:40.0000000Z Error response from daemon: Get https://registry.example.com/v2/: net/http: request canceled (Client.Timeout exceeded while awaiting headers)\n2026-09-15T17:59:40.1000000Z dial tcp 10.0.0.12:443: i/o timeout\n2026-09-15T17:59:41.0000000Z ##[error]Process completed with exit code 1."}
   ],
   "documents": [
     {"path": "src/payment_service.py", "source_type": "code", "content": "def process_payment(order, gateway):\n    # Charge a customer and record the transaction.\n    # Retryable gateway errors must be handled before a deployment.\n    return gateway.charge(order.total)"},

@@ -15,17 +15,48 @@ from typing import Sequence
 from .domain import Document, EmbeddingProvider, VectorRecord
 
 _TERM = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
+_SUBWORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
+_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "how", "i",
+    "in", "is", "it", "of", "on", "or", "should", "that", "the", "this", "to", "we", "what", "when",
+    "where", "which", "who", "why", "with", "you", "me", "tell", "about", "there", "any", "our", "my",
+}
+
+
+def _stem(term: str) -> str:
+    """Tiny suffix stemmer so "signatures"/"verified" match "signature"/"verify"."""
+    if len(term) > 4 and term.endswith(("ies", "ied")):
+        return term[:-3] + "y"
+    if len(term) > 3 and term.endswith("s") and not term.endswith("ss"):
+        return term[:-1]
+    if len(term) > 5 and term.endswith("ing"):
+        return term[:-3]
+    if len(term) > 4 and term.endswith("ed"):
+        return term[:-2]
+    return term
+
+
+def tokenize(text: str) -> list[str]:
+    """Code-aware terms: `getUserName` / `get_user_name` also yield `get`, `user`, `name`."""
+    terms: list[str] = []
+    for token in _TERM.findall(text):
+        lowered = token.lower()
+        parts = [part.lower() for piece in token.split("_") for part in _SUBWORD.findall(piece)]
+        for term in {_stem(word) for word in (lowered, *parts)}:
+            if len(term) > 1 and term not in _STOPWORDS:
+                terms.append(term)
+    return terms
 
 
 class HashingEmbedder:
     """A deterministic offline embedding provider; never sends repository code away."""
 
-    def __init__(self, dimensions: int = 128):
+    def __init__(self, dimensions: int = 1024):
         self.dimensions = dimensions
 
     def embed(self, text: str) -> list[float]:
         values = [0.0] * self.dimensions
-        for term, count in Counter(token.lower() for token in _TERM.findall(text)).items():
+        for term, count in Counter(tokenize(text)).items():
             digest = hashlib.sha256(term.encode("utf-8")).digest()
             index = int.from_bytes(digest[:4], "big") % self.dimensions
             values[index] += count * (1 if digest[4] % 2 else -1)
@@ -56,14 +87,16 @@ class EmbeddingWorker:
         self.store = store
 
     def index(self, documents: Sequence[Document]) -> int:
+        # A file can contribute several chunks, so the id includes the position.
+        # The path is embedded too, letting "payment service" match payment_service.py.
         records = [
             VectorRecord(
-                id=document.path,
+                id=f"{document.path}#{index}",
                 content=document.content,
-                embedding=tuple(self.embedder.embed(document.content)),
+                embedding=tuple(self.embedder.embed(f"{document.path}\n{document.content}")),
                 metadata={"path": document.path, "source_type": document.source_type},
             )
-            for document in documents
+            for index, document in enumerate(documents)
         ]
         self.store.upsert(records)
         return len(records)

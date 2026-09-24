@@ -26,9 +26,9 @@ export const riskItems: RiskItem[] = [
 ];
 
 export const failures: Failure[] = [
-    { repo: "aeip-platform", branch: "feature/rag-engine-anushka", cause: "Timeout connecting to pgvector during embedding batch", time: "14m ago", severity: "high" },
-    { repo: "aeip-platform", branch: "feature/ingestion-github-snehal", cause: "Webhook signature verification failed", time: "1h ago", severity: "medium" },
-    { repo: "aeip-platform", branch: "main", cause: "Type mismatch in DORA metrics aggregator", time: "3h ago", severity: "low" },
+    { id: "m1", commit: "", workflow: "CI", event: "push", repo: "aeip-platform", branch: "feature/rag-engine-anushka", cause: "Timeout connecting to pgvector during embedding batch", time: "14m ago", severity: "high" },
+    { id: "m2", commit: "", workflow: "CI", event: "push", repo: "aeip-platform", branch: "feature/ingestion-github-snehal", cause: "Webhook signature verification failed", time: "1h ago", severity: "medium" },
+    { id: "m3", commit: "", workflow: "CI", event: "push", repo: "aeip-platform", branch: "main", cause: "Type mismatch in DORA metrics aggregator", time: "3h ago", severity: "low" },
 ];
 
 export const initialChat: ChatMessage[] = [

@@ -2,50 +2,57 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, GitBranch, ShieldAlert, Terminal, MessageSquare } from "lucide-react";
 
-const navItems = [
-    { icon: LayoutGrid, label: "Overview", href: "/" },
-    { icon: GitBranch, label: "Repositories", href: "/repositories" },
-    { icon: ShieldAlert, label: "Risk Intel", href: "/risk" },
-    { icon: Terminal, label: "Failures", href: "/failures" },
-    { icon: MessageSquare, label: "Assistant", href: "/assistant" },
+const sections = [
+    {
+        heading: "Workspace",
+        items: [
+            { label: "Overview", href: "/" },
+            { label: "Repositories", href: "/repositories" },
+        ],
+    },
+    {
+        heading: "Investigate",
+        items: [
+            { label: "Change risk", href: "/risk" },
+            { label: "CI failures", href: "/failures" },
+            { label: "Ask the codebase", href: "/assistant" },
+        ],
+    },
 ];
 
 export default function Sidebar() {
     const pathname = usePathname();
 
     return (
-        <aside className="w-[220px] border-r border-[#1B1F28] flex flex-col shrink-0 min-h-screen">
-            <div className="px-5 py-6 border-b border-[#1B1F28]">
-                <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded bg-[#3FD6B0] flex items-center justify-center">
-                        <span className="text-[#0B0D12] font-mono text-xs font-bold">A</span>
+        <aside className="w-[212px] shrink-0 min-h-screen border-r border-line bg-sunken/60 flex flex-col">
+            <Link href="/" className="h-14 px-5 flex items-center gap-2.5 border-b border-line">
+                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+                    <rect x="1" y="1" width="16" height="16" rx="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                    <path d="M5 12.5 8 5.5l3 7M6.2 10h3.6M12.5 5.5v7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <span className="text-[15px] font-semibold tracking-[-0.01em]">AEIP</span>
+            </Link>
+            <nav className="flex-1 px-3 py-5 flex flex-col gap-6">
+                {sections.map((section) => (
+                    <div key={section.heading}>
+                        <p className="px-2 mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">{section.heading}</p>
+                        {section.items.map((item) => {
+                            const active = pathname === item.href;
+                            return (
+                                <Link key={item.href} href={item.href}
+                                    className={`block px-2 py-[7px] rounded-[5px] text-[13.5px] transition-colors ${active
+                                        ? "bg-panel text-ink font-medium shadow-[inset_0_0_0_1px_var(--color-line)]"
+                                        : "text-ink-2 hover:bg-panel/70 hover:text-ink"}`}>
+                                    {item.label}
+                                </Link>
+                            );
+                        })}
                     </div>
-                    <span className="font-mono text-[15px] tracking-tight text-[#E7E9EC]">AEIP</span>
-                </div>
-            </div>
-            <nav className="flex-1 py-4">
-                {navItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = pathname === item.href;
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`w-full flex items-center gap-3 px-5 py-2.5 text-[13.5px] transition-colors ${isActive
-                                    ? "text-[#E7E9EC] bg-[#12151C] border-r-2 border-[#3FD6B0]"
-                                    : "text-[#767D8A] hover:text-[#B4B9C2]"
-                                }`}
-                        >
-                            <Icon size={16} strokeWidth={1.75} />
-                            {item.label}
-                        </Link>
-                    );
-                })}
+                ))}
             </nav>
-            <div className="px-5 py-4 border-t border-[#1B1F28] text-[11px] text-[#4A4F5A] font-mono">
-                v0.2-sprint2-complete
+            <div className="px-5 py-4 border-t border-line text-[11.5px] leading-5 text-muted">
+                VIT Pune · CSA44<br />Mid-semester build
             </div>
         </aside>
     );

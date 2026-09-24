@@ -1,12 +1,11 @@
 import ChatPanel from "@/components/assistant/ChatPanel";
+import { PageHeader } from "@/components/ui";
 
 export default function AssistantPage() {
     return (
-        <div className="h-[600px]">
-            <h1 className="text-[19px] text-[#E7E9EC] mb-4">AI Engineering Assistant</h1>
-            <div className="h-[500px]">
-                <ChatPanel initial={[]} />
-            </div>
+        <div className="max-w-205 flex flex-col gap-6">
+            <PageHeader title="Ask the codebase" meta="Retrieval over the indexed repository, with the sources shown for every answer." />
+            <ChatPanel initial={[]} />
         </div>
     );
 }

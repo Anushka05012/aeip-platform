@@ -21,8 +21,8 @@ class RiskResult:
 
 
 class RiskEngine:
-    def score_files(self, snapshot: RepositorySnapshot, now: datetime) -> list[RiskResult]:
-        cutoff = now - timedelta(days=7)
+    def score_files(self, snapshot: RepositorySnapshot, now: datetime, window_days: int = 7) -> list[RiskResult]:
+        cutoff = now - timedelta(days=window_days)
         recent = [commit for commit in snapshot.commits if commit.authored_at >= cutoff]
         frequency: Counter[str] = Counter(path for commit in recent for path in commit.files)
         results: list[RiskResult] = []
@@ -37,7 +37,7 @@ class RiskEngine:
             score = round(frequency_points + churn_points + complexity_points)
             level = "high" if score >= 70 else "medium" if score >= 40 else "low"
             reasons = (
-                f"{changes} changes in the last 7 days",
+                f"{changes} changes in the last {window_days} days",
                 f"{churn} lines added or removed",
                 f"complexity increased by {complexity}",
             )

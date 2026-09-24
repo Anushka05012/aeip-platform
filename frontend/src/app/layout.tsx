@@ -1,22 +1,28 @@
 import type { Metadata } from "next";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 
+const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex-sans" });
+const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
+
 export const metadata: Metadata = {
-  title: "AEIP — AI Engineering Intelligence Platform",
-  description: "Software engineering analytics and failure intelligence system",
+  title: "AEIP — Engineering Intelligence",
+  description: "Software engineering analytics and CI/CD failure intelligence",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-[#0B0D12] text-[#D8DBE0]">
+    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
+      <body className="bg-paper text-ink text-[14px]">
         <div className="w-full min-h-screen flex">
           <Sidebar />
-          <main className="flex-1 flex flex-col">
+          <main className="flex-1 min-w-0 flex flex-col">
             <Topbar />
-            <div className="flex-1 overflow-auto px-8 py-7">{children}</div>
+            <div className="flex-1 overflow-auto px-6 lg:px-10 py-8">
+              <div className="max-w-[1180px] mx-auto">{children}</div>
+            </div>
           </main>
         </div>
       </body>

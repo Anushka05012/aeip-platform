@@ -1,21 +1,36 @@
 "use client";
 
-import { GitBranch, ChevronDown, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { getHealth } from "@/lib/intelligenceApi";
+import { useActiveRepository } from "@/lib/useActiveRepository";
+
+type Status = { state: "checking" } | { state: "up"; llm: string } | { state: "down" };
 
 export default function Topbar() {
+    const repository = useActiveRepository();
+    const [status, setStatus] = useState<Status>({ state: "checking" });
+
+    useEffect(() => {
+        getHealth().then((health) => setStatus({ state: "up", llm: health.llm })).catch(() => setStatus({ state: "down" }));
+    }, []);
+
+    const dot = status.state === "up" ? "bg-good" : status.state === "down" ? "bg-bad" : "bg-line-strong";
+    const label = status.state === "up"
+        ? `API online · ${status.llm === "groq" ? "Groq LLM" : "offline mode"}`
+        : status.state === "down" ? "API offline" : "Checking API";
+
     return (
-        <div className="h-16 border-b border-[#1B1F28] flex items-center justify-between px-8 shrink-0">
-            <div className="flex items-center gap-2 text-[14px] text-[#B4B9C2]">
-                <GitBranch size={15} className="text-[#5B6270]" />
-                <span>AEIP</span>
-                <ChevronDown size={14} className="text-[#5B6270]" />
+        <div className="h-14 shrink-0 border-b border-line bg-panel px-6 lg:px-10 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 min-w-0 text-[13.5px]">
+                <span className="text-muted">Repository</span>
+                <span className="font-mono text-ink truncate">{repository || "acme/payments-api"}</span>
+                {!repository && <span className="text-muted">(demo data)</span>}
+                <Link href="/repositories" className="ml-1 text-accent hover:underline underline-offset-2">Change</Link>
             </div>
-            <div className="flex items-center gap-2 bg-[#12151C] border border-[#232833] rounded-md px-3 py-1.5 w-64">
-                <Search size={14} className="text-[#5B6270]" />
-                <input
-                    placeholder="Search commits, PRs, logs..."
-                    className="bg-transparent outline-none text-[13px] placeholder:text-[#4A4F5A] w-full text-[#D8DBE0]"
-                />
+            <div className="flex items-center gap-2 text-[12.5px] text-ink-2 shrink-0" title="Intelligence service on :8001">
+                <span className={`w-2 h-2 rounded-full ${dot}`} />
+                {label}
             </div>
         </div>
     );

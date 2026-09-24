@@ -39,6 +39,35 @@ llm-services/
 └── .env.example
 ```
 
+## Live demo: analyze any GitHub repository
+
+1. `python scripts/serve.py` (API on :8001) and `npm run dev` in `frontend/` (UI on :3000).
+2. Open **Repositories**, enter `owner/repo` or a GitHub URL, click **Analyze repository**.
+   The service fetches commits (with per-file churn and complexity), GitHub Actions
+   runs and the source zipball, then chunks, embeds, scores risk and computes DORA.
+3. The repository becomes active: Overview, Risk, Failures and the Assistant all use it.
+
+Terminal equivalent: `python scripts/analyze_github.py owner/repo "your question"`.
+Analyses are cached in `data/cache/`, so they survive restarts and network loss.
+Set `GITHUB_TOKEN` in `.env` (anonymous GitHub allows ~1 analysis per hour) and
+`GROQ_API_KEY` for LLM-written answers (otherwise answers are extractive).
+
+## CI/CD failure intelligence
+
+On the **Failures** page, **Explain** answers "was this failure caused by its triggering
+commit?" (`src/failure_analysis.py`, `POST /api/failures/explain`):
+
+1. Fetch the failed jobs, failed steps, check annotations and (with `GITHUB_TOKEN`) the job log.
+2. Redact secrets, extract the error lines, and classify the failure (test, build, lint/type,
+   dependency, or infrastructure/flaky).
+3. Deterministic correlation: changed files named in the error output, infrastructure
+   markers, scheduled triggers, and the risk scores of the changed files.
+4. Groq reasons over that evidence plus RAG-retrieved code. Logs and code are passed as
+   untrusted data, so instructions inside them are ignored.
+5. Verdict (related / unrelated / uncertain) with a confidence. When the rules and the LLM
+   disagree, confidence is capped, and anything under 0.6 is flagged for human review.
+   Next steps are suggestions only; nothing is executed.
+
 ## Run it locally
 
 Run the tests (fast, no API key required):
