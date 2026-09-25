@@ -17,15 +17,15 @@ type Stored = Map<string, Repository> | "offline" | null;
 
 function PipelineLog({ summary }: { summary: RepositorySummary }) {
   const total = summary.stages.reduce((sum, stage) => sum + stage.ms, 0);
-  return <div className="bg-ink text-[#e8e6e1] rounded-[5px] p-4 font-mono text-[12px] leading-[1.8] overflow-x-auto">
-    <p className="text-[#a8a49a]">$ aeip analyze {summary.repository}</p>
+  return <div className="bg-console text-console-fg rounded-[5px] p-4 font-mono text-[12px] leading-[1.8] overflow-x-auto">
+    <p className="text-console-muted">$ aeip analyze {summary.repository}</p>
     {summary.stages.map((stage) => <p key={stage.stage} className="whitespace-nowrap">
-      {/^(skipped|failed)/.test(stage.detail) ? <span className="text-[#e0b25c]">–</span> : <span className="text-[#7fd1a4]">✓</span>}{" "}
+      {/^(skipped|failed)/.test(stage.detail) ? <span className="text-console-warn">–</span> : <span className="text-console-ok">✓</span>}{" "}
       <span className="inline-block w-[210px]">{stage.stage}</span>
-      <span className="inline-block w-[70px] text-right text-[#a8a49a]">{formatMs(stage.ms)}</span>
+      <span className="inline-block w-[70px] text-right text-console-muted">{formatMs(stage.ms)}</span>
       <span className="ml-4">{stage.detail}</span>
     </p>)}
-    <p className="text-[#a8a49a]">done in {formatMs(total)}</p>
+    <p className="text-console-muted">done in {formatMs(total)}</p>
   </div>;
 }
 

@@ -21,8 +21,49 @@
   --color-good: #0b7a4b;
   --color-good-soft: #eaf6ef;
 
+  /* Terminal-style blocks (pipeline log, error output) stay dark in both themes. */
+  --color-console: #1d1c1a;
+  --color-console-fg: #e8e6e1;
+  --color-console-muted: #a8a49a;
+  --color-console-ok: #7fd1a4;
+  --color-console-warn: #e0b25c;
+
+  /* Chart marks (validated with the dataviz palette checker for each surface). */
+  --color-chart-bar: #2350c8;
+  --color-chart-grid: #ece9e2;
+
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* Dark theme: same roles, warm near-black surfaces. Set by the toggle via <html data-theme="dark">. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: #161513;
+  --color-panel: #1e1d1a;
+  --color-sunken: #262521;
+  --color-line: #34322d;
+  --color-line-strong: #4a4740;
+  --color-ink: #ecebe6;
+  --color-ink-2: #bdbab2;
+  --color-muted: #8d8a82;
+  --color-accent: #6b8ff0;
+  --color-accent-soft: #1f2a44;
+
+  --color-bad: #f07a6c;
+  --color-bad-soft: #3a1f1b;
+  --color-warn: #e0a855;
+  --color-warn-soft: #372a15;
+  --color-good: #5cc793;
+  --color-good-soft: #173027;
+
+  --color-console: #0f0e0d;
+  --color-chart-bar: #6b8ff0;
+  --color-chart-grid: #2c2b27;
+}
+
+:root {
+  color-scheme: light;
 }
 
 html,

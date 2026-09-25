@@ -68,7 +68,7 @@ function Report({ result, onRefresh, busy }: { result: FailureExplanation; onRef
       </Field>}
 
       {!!result.error_lines.length && <Field label={`Error output (${result.log_source}, secrets redacted)`}>
-        <pre className="font-mono text-[11.5px] leading-[1.6] bg-ink text-[#e8e6e1] rounded-[5px] p-3 overflow-x-auto max-h-72">{result.error_lines.join("\n")}</pre>
+        <pre className="font-mono text-[11.5px] leading-[1.6] bg-console text-console-fg rounded-[5px] p-3 overflow-x-auto max-h-72">{result.error_lines.join("\n")}</pre>
       </Field>}
 
       {!!result.evidence.length && <Field label="Related code">

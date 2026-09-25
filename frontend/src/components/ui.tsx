@@ -4,10 +4,10 @@ export type Tone = "neutral" | "bad" | "warn" | "good" | "accent";
 
 const toneClass: Record<Tone, string> = {
   neutral: "bg-sunken text-ink-2 border-line",
-  bad: "bg-bad-soft text-bad border-[#f3cfc9]",
-  warn: "bg-warn-soft text-warn border-[#f0dcb2]",
-  good: "bg-good-soft text-good border-[#c3e5d2]",
-  accent: "bg-accent-soft text-accent border-[#cbd8f7]",
+  bad: "bg-bad-soft text-bad border-bad/25",
+  warn: "bg-warn-soft text-warn border-warn/25",
+  good: "bg-good-soft text-good border-good/25",
+  accent: "bg-accent-soft text-accent border-accent/25",
 };
 
 export function levelTone(level?: string): Tone {
@@ -46,7 +46,7 @@ export function Button({ variant = "secondary", className = "", ...props }: Butt
   variant?: "primary" | "secondary" | "ghost";
 }) {
   const styles = {
-    primary: "bg-ink text-white border-ink hover:bg-[#33312d]",
+    primary: "bg-ink text-paper border-ink hover:opacity-85",
     secondary: "bg-panel text-ink border-line-strong hover:bg-sunken",
     ghost: "bg-transparent text-ink-2 border-transparent hover:bg-sunken",
   }[variant];
