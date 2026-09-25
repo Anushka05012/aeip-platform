@@ -659,20 +659,34 @@ def api(method: str, path: str, token: str, body: dict | None = None):
         raise SystemExit(f"GitHub {method} {path} failed: HTTP {exc.code} {exc.read().decode()[:300]}")
 
 
+def repo_state(owner: str, name: str, token: str) -> str:
+    """'missing', 'empty' (created on github.com without a README) or 'has-commits'."""
+    request = urllib.request.Request(f"https://api.github.com/repos/{owner}/{name}/commits?per_page=1",
+                                     headers={"Authorization": f"Bearer {token}", "User-Agent": "aeip-demo"})
+    try:
+        with urllib.request.urlopen(request, timeout=60):
+            return "has-commits"
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return "missing"
+        if exc.code == 409:  # "Git Repository is empty"
+            return "empty"
+        raise SystemExit(f"Could not inspect {owner}/{name}: HTTP {exc.code}")
+
+
 def publish(folder: Path, name: str) -> None:
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         raise SystemExit("Set GITHUB_TOKEN (repo + workflow permissions) before publishing.")
     owner = api("GET", "/user", token)["login"]
-    try:
-        api("GET", f"/repos/{owner}/{name}", token)
-        raise SystemExit(f"{owner}/{name} already exists; choose another name so the history starts clean.")
-    except SystemExit as exc:
-        if "already exists" in str(exc):
-            raise
-    api("POST", "/user/repos", token, {"name": name, "private": False, "auto_init": False,
-                                       "description": "PayFlow – demo repository for AEIP (AI Engineering Intelligence Platform)"})
-    print(f"Created https://github.com/{owner}/{name}")
+    if repo_state(owner, name, token) == "missing":
+        api("POST", "/user/repos", token, {"name": name, "private": False, "auto_init": False,
+                                           "description": "PayFlow – demo repository for AEIP (AI Engineering Intelligence Platform)"})
+        print(f"Created https://github.com/{owner}/{name}")
+    elif repo_state(owner, name, token) == "empty":
+        print(f"Using existing empty repository https://github.com/{owner}/{name}")
+    else:
+        raise SystemExit(f"{owner}/{name} already has commits; use a new or empty repository so the history starts clean.")
 
     auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
     push_env = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",

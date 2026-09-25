@@ -26,8 +26,10 @@ differs from the plan.
 
 ## 2. Publish to GitHub
 
-Create a **classic personal access token** (GitHub → Settings → Developer settings →
-Personal access tokens → Tokens (classic)) with scopes **`repo`** and **`workflow`**, then:
+Either create a **classic personal access token** with scopes **`repo`** and **`workflow`**
+(the script then creates the repository itself), or create an **empty** public repository
+on github.com (no README) and use a **fine-grained token** that can access it with
+*Contents*, *Workflows* and *Pull requests* set to **Read and write**. Then:
 
 ```powershell
 $env:GITHUB_TOKEN = "<token>"
