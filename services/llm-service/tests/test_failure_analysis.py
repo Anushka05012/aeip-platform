@@ -48,6 +48,29 @@ def test_network_timeout_is_unrelated_to_the_change():
     assert result["category"] == "infrastructure / flaky"
 
 
+def _infra_failure(changed_files):
+    from datetime import datetime
+
+    from src.domain import Commit, Deployment
+    from src.failure_analysis import build_evidence, correlate
+
+    log = "ERROR: Could not resolve host registry.example.invalid while pushing image"
+    run = Deployment("r1", datetime(2026, 9, 1), "c1", "failure", name="CI/CD", branch="main", event="push", log=log)
+    commit = Commit("c1", datetime(2026, 9, 1), tuple(changed_files), 2, 1)
+    return correlate(build_evidence(run, commit, []), True)
+
+
+def test_network_error_after_config_change_is_a_misconfiguration_caused_by_the_change():
+    verdict, confidence, category, signals, _ = _infra_failure(["deploy/config.json"])
+    assert (verdict, category) == ("related", "infrastructure / flaky")
+    assert any("misconfiguration" in signal for signal in signals)
+
+
+def test_network_error_after_docs_only_change_is_unrelated():
+    verdict, confidence, _, _, _ = _infra_failure(["docs/runbook.md"])
+    assert verdict == "unrelated" and confidence == 0.8
+
+
 class FakeChat:
     def __init__(self, reply):
         self.reply = reply

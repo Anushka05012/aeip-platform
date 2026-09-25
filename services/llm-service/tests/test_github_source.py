@@ -94,6 +94,16 @@ def test_filters_generated_and_vendored_files():
     assert not is_analyzable("package-lock.json")
 
 
+def test_risk_counts_production_code_only():
+    from src.github_source import is_source_code
+
+    assert is_source_code("src/payflow/service.py")
+    assert not is_source_code("tests/test_service.py")
+    assert not is_source_code("src/app/login.test.ts")
+    assert not is_source_code("docs/runbook.md")
+    assert not is_source_code(".github/workflows/ci.yml")
+
+
 def test_complexity_delta_counts_added_minus_removed_branches():
     assert complexity_delta("+if a:\n+for x in y:\n-while z:\n") == 1
 

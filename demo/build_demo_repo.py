@@ -10,11 +10,15 @@ The history is scripted so the CI outcomes are known in advance:
         c3  retry transient gateway errors          CI green
         c4  refactor payment flow                   CI RED: KeyError raised in service.py  -> related
         c5  fix idempotency lookup                  CI green
-        c6  point deploy at new registry            CI RED: registry DNS failure           -> unrelated
+        c6  point deploy at new registry            CI RED: registry DNS failure after a config
+                                                    change -> related (misconfiguration)
         c7  revert registry                         CI green
         c8  webhook signature check                 CI green
         c9  order discounts                         CI green
         c10 runbook update (docs only)              CI green
+        c11 gateway sandbox smoke test              CI green
+        c12 runbook on-call notes (docs only)       CI RED: simulated sandbox outage -> unrelated
+        c13 README link (docs only)                 CI green
   PR  feature/partial-refunds   (open)              CI RED: ValueError raised in refunds.py -> related, linked to PR
   PR  fix/token-expiry          (merged)            CI green
   PR  feature/currency-format   (open)              CI green
@@ -535,6 +539,31 @@ TESTS_AUTH_FIXED = BASE["tests/test_auth.py"] + d('''
         assert not validate_token(token, now=1_000 + TTL_SECONDS + 30)
     ''')
 
+SANDBOX_TEST = d('''
+    """Smoke test against the payment gateway's shared sandbox.
+
+    The sandbox is shared with other teams and has occasional outages. For the AEIP demo,
+    CI run #__RUN__ simulates one of those outages; every other run passes. The commit
+    that triggers that run changes documentation only, so the failure is not caused by it.
+    """
+
+    import os
+
+
+    class SandboxUnavailable(ConnectionError):
+        pass
+
+
+    def ping_sandbox() -> str:
+        if os.getenv("GITHUB_RUN_NUMBER") == "__RUN__":
+            raise SandboxUnavailable("connect to sandbox.gateway.payflow.example:443 timed out after 30s (ETIMEDOUT)")
+        return "pong"
+
+
+    def test_gateway_sandbox_is_reachable():
+        assert ping_sandbox() == "pong"
+    ''')
+
 RUNBOOK_V2 = BASE["docs/runbook.md"] + d("""
 
     ## Refund policy
@@ -542,6 +571,18 @@ RUNBOOK_V2 = BASE["docs/runbook.md"] + d("""
     Partial refunds are allowed until the charge's remaining balance reaches zero.
     Always refund against the original charge ID, never create a new charge.
     """)
+
+RUNBOOK_V3 = RUNBOOK_V2 + d("""
+
+    ## On-call
+
+    Payments on-call rotates weekly. Gateway sandbox outages are posted in #payments-sandbox;
+    re-run CI once the sandbox is back instead of changing code.
+    """)
+
+README_V2 = BASE["README.md"].replace(
+    "## Development",
+    "Operational procedures live in [docs/runbook.md](docs/runbook.md).\n\n## Development")
 
 # --------------------------------------------------------------------------- history
 # Each step: message, files to write, expected (tests_pass, deploy_pass or None when not deployed).
@@ -561,6 +602,9 @@ MAIN = [
     ("feat: verify gateway callback signatures", {"src/payflow/webhooks.py": WEBHOOKS, "tests/test_webhooks.py": TESTS_WEBHOOKS}, (True, True)),
     ("feat: discount codes on order totals", {"src/payflow/orders.py": ORDERS_DISCOUNT, "tests/test_orders.py": TESTS_ORDERS_DISCOUNT}, (True, True)),
     ("docs: add refund policy to the runbook", {"docs/runbook.md": RUNBOOK_V2}, (True, True)),
+    ("test: add gateway sandbox smoke test", {"tests/test_gateway_sandbox.py": SANDBOX_TEST.replace("__RUN__", "12")}, (True, True)),
+    ("docs: add on-call notes to the runbook", {"docs/runbook.md": RUNBOOK_V3}, (False, None)),  # sandbox outage (run 12)
+    ("docs: link the runbook from the README", {"README.md": README_V2}, (True, True)),
 ]
 
 BRANCHES = [
@@ -598,9 +642,10 @@ def write(folder: Path, files: dict[str, str]) -> None:
         target.write_text(content, encoding="utf-8", newline="\n")
 
 
-def run_tests(folder: Path) -> bool:
+def run_tests(folder: Path, run_number: str = "0") -> bool:
+    # GITHUB_RUN_NUMBER mirrors CI: on a fresh repo, the n-th push to main is CI run n.
     result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"], cwd=folder,
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, env={**os.environ, "GITHUB_RUN_NUMBER": run_number})
     shutil.rmtree(folder / "src" / "payflow" / "__pycache__", ignore_errors=True)
     shutil.rmtree(folder / "tests" / "__pycache__", ignore_errors=True)
     return result.returncode == 0
@@ -627,7 +672,7 @@ def build(folder: Path) -> None:
     for index, (message, files, (tests_ok, deploy_ok)) in enumerate(MAIN, start=1):
         write(folder, files)
         print(f"c{index:<2} {message}")
-        check(message, run_tests(folder), tests_ok, "tests")
+        check(message, run_tests(folder, str(index)), tests_ok, "tests")
         if deploy_ok is not None:
             check(message, run_deploy(folder), deploy_ok, "deploy")
         git(folder, "add", "-A")

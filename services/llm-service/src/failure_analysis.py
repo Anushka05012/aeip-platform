@@ -112,6 +112,18 @@ def classify(text: str) -> str:
     return "unknown"
 
 
+_CONFIG_SUFFIXES = (".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env", ".tf")
+
+
+def is_config_file(path: str) -> bool:
+    """Deployment/runtime configuration (not package manifests or lock files)."""
+    name = PurePosixPath(path).name.lower()
+    if name in {"package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "poetry.lock"}:
+        return False
+    return (name.endswith(_CONFIG_SUFFIXES) or name == "dockerfile" or path.startswith(("deploy/", "infra/", ".github/"))
+            or "docker-compose" in name)
+
+
 def files_mentioned(text: str, files: Sequence[str]) -> list[str]:
     lowered = text.lower()
     found = []
@@ -211,12 +223,16 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
     category = classify(text)
     mentioned = files_mentioned(text, evidence.changed_files)
     source_changed = [path for path in evidence.changed_files if not path.endswith((".md", ".rst", ".txt"))]
+    config_changed = [path for path in evidence.changed_files if is_config_file(path)]
     signals: list[str] = []
 
     if mentioned:
         signals.append(f"Error output mentions files changed by the triggering commit: {', '.join(mentioned)}")
     if category == "infrastructure / flaky":
         signals.append("Error output contains infrastructure/flaky markers (timeouts, network, rate limits)")
+        if config_changed:
+            signals.append(f"The commit changed configuration ({', '.join(config_changed)}) right before this "
+                           "infrastructure error, so it is likely a misconfiguration introduced by the change")
     if evidence.event == "schedule":
         signals.append("Run was triggered by a schedule, not by a code change")
     if evidence.pull_request:
@@ -233,8 +249,11 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
 
     if mentioned:
         verdict, confidence = "related", 0.85
+    elif category == "infrastructure / flaky" and config_changed:
+        verdict, confidence = "related", 0.65
     elif category == "infrastructure / flaky":
-        verdict, confidence = "unrelated", 0.7
+        # A network error after a docs-only commit is the clearest "not caused by the change" case.
+        verdict, confidence = "unrelated", 0.8 if commit_known and not source_changed else 0.7
     elif evidence.event == "schedule":
         verdict, confidence = "unrelated", 0.7
     elif not commit_known or not evidence.error_lines:
@@ -275,7 +294,7 @@ def _llm_judgement(evidence: FailureEvidence, heuristic: dict[str, Any], risks: 
           "confidence (0-1), explanation (3-5 sentences citing files/log lines), next_steps (2-4 short strings)."
     )
     reply = client.chat([{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
-                        temperature=0.1, max_tokens=700)
+                        temperature=0.1, max_tokens=1200)
     match = re.search(r"\{[\s\S]*\}", reply or "")
     if not match:
         return None
@@ -309,8 +328,15 @@ class FailureAnalyzer:
         mode, notes = "offline", []
         if client is not None and evidence.error_lines:
             heuristic = {"verdict": verdict, "category": category, "signals": signals}
+            judgement = None
             try:
-                judgement = _llm_judgement(evidence, heuristic, changed_risks, code, client)
+                # Hosted models occasionally return an empty or cut-off reply; one retry fixes most.
+                for _ in range(2):
+                    judgement = _llm_judgement(evidence, heuristic, changed_risks, code, client)
+                    if judgement:
+                        break
+                else:
+                    notes.append("LLM reply could not be parsed; rule-based analysis shown.")
             except Exception as exc:  # the demo must still answer if Groq is down
                 judgement = None
                 notes.append(f"LLM unavailable ({type(exc).__name__}); rule-based analysis shown.")
@@ -350,7 +376,10 @@ class FailureAnalyzer:
     @staticmethod
     def _offline_explanation(evidence: FailureEvidence, verdict: str, category: str, mentioned: list[str]) -> str:
         where = f"'{evidence.workflow}'" + (f" on {evidence.branch}" if evidence.branch else "")
-        first_error = next((line for line in reversed(evidence.error_lines) if _ERROR_LINE.search(line)), "")
+        # Prefer a real error line (exception, assertion) over our own "Failed step: ..." markers.
+        candidates = [line for line in evidence.error_lines if not line.startswith("Failed step:")] or evidence.error_lines
+        first_error = next((line for line in reversed(candidates)
+                            if _ERROR_LINE.search(line) and "exit code" not in line.lower()), "")
         parts = [f"Workflow {where} failed with a {category} for commit {evidence.commit_sha[:7]}."]
         if first_error:
             parts.append(f"Key error: {first_error[:200]}")

@@ -67,10 +67,19 @@ def is_analyzable(path: str) -> bool:
     return pure.suffix.lower() in CODE_EXTENSIONS or pure.suffix.lower() in DOC_EXTENSIONS
 
 
+_TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
+_TEST_FILE = re.compile(r"^test_.+|.+_test\.\w+$|.+\.(test|spec)\.\w+$")
+
+
+def is_test_file(path: str) -> bool:
+    pure = PurePosixPath(path)
+    return any(part.lower() in _TEST_DIRS for part in pure.parts[:-1]) or bool(_TEST_FILE.match(pure.name.lower()))
+
+
 def is_source_code(path: str) -> bool:
-    """Files that count toward risk: code, not docs, config, or dependency manifests."""
+    """Files that count toward risk: production code, not tests, docs, config or manifests."""
     suffix = PurePosixPath(path).suffix.lower()
-    return suffix in CODE_EXTENSIONS and suffix not in {".json", ".yaml", ".yml"}
+    return suffix in CODE_EXTENSIONS and suffix not in {".json", ".yaml", ".yml"} and not is_test_file(path)
 
 
 def complexity_delta(patch: str) -> int:

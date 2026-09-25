@@ -9,8 +9,10 @@ pull requests, failures with known causes, a risky hotspot file, and docs for RA
 | c1–c3 | green | DORA deployments, commit history |
 | c4 `refactor: extract retry loop…` | tests fail with `KeyError` raised in `service.py` | **Caused by the change**; `service.py` in error output |
 | c5 fix | green | lead time for a fix |
-| c6 `chore: deploy to the new container registry` | deploy fails: registry DNS | **Not caused by the change** (infrastructure) |
-| c7–c10 | green | risk scoring (`service.py` changed most) |
+| c6 `chore: deploy to the new container registry` | deploy fails: registry DNS | **Caused by the change**: a network error, but right after a config change (misconfiguration) |
+| c7–c11 | green | risk scoring (`service.py` changed most) |
+| c12 `docs: add on-call notes…` (docs only) | sandbox smoke test times out (simulated outage, stated in the test's docstring) | **Not caused by the change** (infrastructure) |
+| c13 | green | recovery |
 | PR *Support partial refunds* (open) | tests fail in `refunds.py` | failure **linked to the pull request** |
 | PR *Reject dashboard tokens right after expiry* | green, merged | merged PR, merge commit deploy |
 | PR *Format amounts with currency symbols* (open) | green | open PR |
