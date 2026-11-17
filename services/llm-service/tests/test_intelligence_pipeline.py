@@ -62,3 +62,23 @@ def test_pipeline_runs_without_a_groq_key_or_any_team_integration():
     assert risk.level == "high"
     assert evidence
     assert "Evidence:" in summary
+
+
+def test_time_to_restore_is_the_median_failure_to_recovery_per_workflow():
+    metrics = calculate_dora(snapshot(), START, NOW)
+    # "Tests" failed on Sep 12 and passed on Sep 14; "Deploy" failed on Sep 15 and has not recovered.
+    assert metrics.time_to_restore_hours == 48.0
+    assert (metrics.restored_incidents, metrics.open_incidents) == (1, 1)
+
+
+def test_time_to_restore_counts_a_failure_streak_once_and_ignores_other_workflows():
+    from src.domain import Deployment
+    from src.dora import restore_times
+
+    def run(hour, status, name):
+        return Deployment(f"{name}{hour}", datetime(2026, 9, 1, hour), "c", status, name=name)
+
+    runs = [run(1, "failure", "deploy"), run(2, "failure", "deploy"), run(3, "success", "lint"),
+            run(5, "success", "deploy"), run(6, "failure", "lint"), run(8, "success", "lint")]
+    durations, still_open = restore_times(runs)
+    assert sorted(durations) == [2.0, 4.0] and still_open == 0

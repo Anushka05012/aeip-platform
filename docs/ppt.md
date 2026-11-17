@@ -106,7 +106,7 @@ marked as an FF 180 assumption or a plan.
 | Feature | What the developer gets | Status |
 |---|---|---|
 | Repository connection | Paste a GitHub link; the full pipeline runs | ✅ |
-| Delivery health (DORA) | Deployment frequency, lead time, change failure rate | ✅ (3 of 4) |
+| Delivery health (DORA) | Deployment frequency, lead time, change failure rate, time to restore | ✅ (all 4) |
 | Change risk | Riskiest production files, with every input shown | ✅ |
 | CI failure explanation | Caused by the change or not: verdict, evidence, confidence, next steps | ✅ |
 | Pull-request correlation | A failed run linked to the PR whose branch it built | ✅ |
