@@ -1,0 +1,5 @@
+Running test suite
+FAIL src/auth.test.ts
+Expected: 200
+Received: 500
+AssertionError: response status did not match
