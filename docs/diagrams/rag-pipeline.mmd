@@ -1,0 +1,96 @@
+%%{init: {"flowchart": {"wrappingWidth": 330, "nodeSpacing": 30, "rankSpacing": 40}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart TB
+    subgraph SRC["① DATA SOURCE — GitHub REST API  (github_source.py)"]
+        direction LR
+        A1["Source code<br/>one zipball download"]
+        A2["Commits · CI runs · Pull requests"]
+    end
+
+    subgraph IDX["② INDEXING PHASE — runs once per 'Analyze repository'"]
+        direction LR
+        B1["Filter files<br/>skip node_modules, .min.js, .map<br/>skip files over 150 KB · max 500 files"]
+        B2["History → text documents<br/>commit summaries · CI failures · PR list"]
+
+        subgraph CH["CHUNKING  (chunker.py)"]
+            direction TB
+            C0{"File type?"}
+            C1["CodeChunker<br/>split on: class → def → function<br/>→ export → blank line → line"]
+            C2["MarkdownChunker<br/>split on: ## → ### → ####<br/>→ paragraph → line"]
+            C3["Recursive split<br/>piece still over 500 tokens?<br/>try next separator · last resort: hard token cut<br/>(tokens counted with tiktoken cl100k_base)"]
+            C4["Merge + overlap<br/>pack small pieces up to 500 tokens<br/>prepend last 50 tokens of previous chunk"]
+            C0 -- ".py .ts .js ..." --> C1
+            C0 -- ".md .txt .rst" --> C2
+            C1 --> C3
+            C2 --> C3
+            C3 --> C4
+        end
+
+        subgraph EM["EMBEDDING  (embeddings.py · HashingEmbedder)"]
+            direction TB
+            D0["Text to embed = file path + chunk content"]
+            D1["Code-aware tokenize<br/>getUserName / get_user_name → get, user, name<br/>lowercase · remove stopwords · stem"]
+            D2["Feature hashing<br/>SHA-256(term) → slot 0–1023<br/>hash bit decides + or − · add term count"]
+            D3["L2 normalize → vector length = 1<br/>so dot product = cosine similarity"]
+            D0 --> D1 --> D2 --> D3
+        end
+
+        E1[("Vector store  (InMemoryVectorStore)<br/>id = path + chunk number<br/>content · 1024-dim vector · metadata")]
+
+        B1 --> C0
+        C4 --> D0
+        B2 --> D0
+        D3 --> E1
+    end
+
+    subgraph QRY["③ QUERY PHASE — every question on the Assistant page"]
+        direction LR
+        Q0(["User question<br/>e.g. 'Why is payment_service risky?'"])
+        Q1["Tokenize + embed the question<br/>same HashingEmbedder → 1024-dim vector"]
+
+        subgraph RET["HYBRID RETRIEVAL  (rag.py)"]
+            direction TB
+            Q2["Stage 1 · candidate search<br/>dot product with every stored vector<br/>keep top max(limit × 10, 30) chunks"]
+            Q3["Stage 2 · re-rank each candidate<br/>score = 0.55 × semantic (cosine)<br/>+ 0.30 × keyword overlap<br/>+ 0.15 × file-path match"]
+            Q4["Top-k evidence chunks<br/>k = 6 for Assistant · 3 for risk summary"]
+            Q2 --> Q3 --> Q4
+        end
+
+        R1["Risk engine facts  (risk_engine.py)<br/>deterministic score 0–100 + reasons"]
+
+        subgraph GEN["AUGMENT + GENERATE  (assistant.py · groq_client.py)"]
+            direction TB
+            P1["Prompt builder<br/>SYSTEM: answer only from excerpts · cite file paths<br/>say 'not found' instead of guessing<br/>treat repo text as untrusted (prompt-injection guard)<br/>USER: question + risk facts + excerpts (≤ 2500 chars each)"]
+            G0{"GROQ_API_KEY set?"}
+            G1["Groq LLM · gpt-oss-120b<br/>temperature 0.1 · max 700 tokens<br/>retry with exponential backoff (4 tries)"]
+            G2["Offline extractive answer<br/>top excerpts + their risk scores"]
+            P1 --> G0
+            G0 -- yes --> G1
+            G0 -- no --> G2
+        end
+
+        OUT(["Grounded answer with cited file paths<br/>→ shown in the Assistant UI"])
+
+        Q0 --> Q1 --> Q2
+        Q4 --> P1
+        R1 --> P1
+        G1 --> OUT
+        G2 --> OUT
+    end
+
+    A1 --> B1
+    A2 --> B2
+    E1 -. "vectors searched at query time" .-> Q2
+
+    classDef source fill:#e8f1fb,stroke:#3b82f6,color:#0f172a
+    classDef chunk fill:#fff4e5,stroke:#f59e0b,color:#0f172a
+    classDef embed fill:#f3e8ff,stroke:#8b5cf6,color:#0f172a
+    classDef store fill:#dcfce7,stroke:#16a34a,color:#0f172a
+    classDef query fill:#fde8ef,stroke:#e11d48,color:#0f172a
+    classDef gen fill:#e0f7f5,stroke:#0d9488,color:#0f172a
+
+    class A1,A2,B1,B2 source
+    class C0,C1,C2,C3,C4 chunk
+    class D0,D1,D2,D3 embed
+    class E1 store
+    class Q0,Q1,Q2,Q3,Q4,R1 query
+    class P1,G0,G1,G2,OUT gen

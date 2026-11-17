@@ -1,0 +1,141 @@
+{
+  "measured_at": "2026-09-24T17:27:08+05:30",
+  "machine": {
+    "os": "Windows 11",
+    "cpu": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
+    "physical_cores": 10,
+    "logical_cores": 12,
+    "ram_total_gb": 15.7,
+    "python": "3.13.5",
+    "gpu": "not used (no local model)"
+  },
+  "workload": {
+    "repository": "pallets/itsdangerous",
+    "commits": 40,
+    "ci_runs": 60,
+    "indexed_chunks": 79,
+    "recorded_github_fetch_stages": [
+      {
+        "stage": "Connect",
+        "detail": "pallets/itsdangerous \u00b7 default branch main",
+        "ms": 457
+      },
+      {
+        "stage": "Commits",
+        "detail": "40 commits with per-file churn and complexity",
+        "ms": 23503
+      },
+      {
+        "stage": "CI/CD runs",
+        "detail": "60 completed CI runs (48 failed)",
+        "ms": 1980
+      },
+      {
+        "stage": "Source + chunking",
+        "detail": "39 files downloaded, split into 74 chunks",
+        "ms": 1116
+      },
+      {
+        "stage": "Embedding + vector index",
+        "detail": "79 chunks embedded for hybrid retrieval",
+        "ms": 43
+      },
+      {
+        "stage": "Risk scoring",
+        "detail": "6 files scored over 349 days; highest src/itsdangerous/timed.py (55/100)",
+        "ms": 0
+      },
+      {
+        "stage": "DORA metrics",
+        "detail": "7.0/week deploys, 100.0% change failure rate",
+        "ms": 0
+      }
+    ]
+  },
+  "timings": {
+    "service_startup_ms": 47.63,
+    "index_repository": {
+      "avg_ms": 47.13,
+      "median_ms": 48.01,
+      "p95_ms": 52.57,
+      "min_ms": 38.5,
+      "max_ms": 53.3,
+      "n": 5
+    },
+    "risk_scoring": {
+      "avg_ms": 0.01,
+      "median_ms": 0.0,
+      "p95_ms": 0.01,
+      "min_ms": 0.0,
+      "max_ms": 0.03,
+      "n": 20
+    },
+    "retrieval_per_query": {
+      "avg_ms": 30.2,
+      "median_ms": 29.88,
+      "p95_ms": 34.67,
+      "min_ms": 25.53,
+      "max_ms": 43.04,
+      "n": 50
+    },
+    "offline_answer_per_query": {
+      "avg_ms": 39.98,
+      "median_ms": 32.76,
+      "p95_ms": 67.62,
+      "min_ms": 29.14,
+      "max_ms": 69.71,
+      "n": 10
+    },
+    "failure_explanation_offline": {
+      "avg_ms": 2.03,
+      "median_ms": 1.67,
+      "p95_ms": 2.93,
+      "min_ms": 1.55,
+      "max_ms": 3.37,
+      "n": 10
+    },
+    "groq_answer_per_query": {
+      "avg_ms": 8576.25,
+      "median_ms": 8587.76,
+      "p95_ms": 8674.75,
+      "min_ms": 8136.16,
+      "max_ms": 8980.29,
+      "n": 5
+    },
+    "groq_failure_explanation": {
+      "avg_ms": 7188.11,
+      "median_ms": 7183.08,
+      "p95_ms": 7183.08,
+      "min_ms": 7153.7,
+      "max_ms": 7227.55,
+      "n": 3
+    }
+  },
+  "llm": {
+    "provider": "Groq (hosted)",
+    "model": "llama-3.3-70b-versatile"
+  },
+  "resources": {
+    "process_ram_baseline_mb": 73.08,
+    "process_ram_after_loading_repositories_mb": 76.23,
+    "process_ram_peak_mb": 107.75,
+    "system_cpu_during_queries_pct_avg": 44.5,
+    "process_cpu_seconds_total": 2.17,
+    "gpu_utilisation_pct": 0
+  },
+  "storage": {
+    "cached_analyses_mb": 0.15,
+    "cache_per_repository_kb": {
+      "pallets__itsdangerous.json": 150.3
+    },
+    "intelligence_service_source_mb": 0.29,
+    "frontend_source_mb": 0.46,
+    "local_model_weights_mb": 0
+  },
+  "energy_estimate": {
+    "method": "process CPU-seconds x 15.0 W assumed CPU power / 3600",
+    "local_wh_whole_run": 0.009,
+    "local_kwh_per_1000_offline_queries": 0.00013,
+    "note": "Local compute only. Energy used by Groq's hosted LLM servers cannot be measured from the client."
+  }
+}

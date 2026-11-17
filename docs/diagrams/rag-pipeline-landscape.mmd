@@ -1,0 +1,69 @@
+%%{init: {"flowchart": {"wrappingWidth": 230, "nodeSpacing": 22, "rankSpacing": 55, "padding": 10}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart LR
+    subgraph S1["① INPUT — GitHub API"]
+        direction TB
+        A1["Source code<br/>one zipball download"]
+        A2["Filter files<br/>skip node_modules, .min.js<br/>skip files > 150 KB · max 500"]
+        A3["History → text<br/>commits · CI failures · PRs"]
+        A1 --> A2 --> A3
+    end
+
+    subgraph S2["② CHUNKING — chunker.py"]
+        direction TB
+        C0{"File type?"}
+        C1["Code: split on<br/>class → def → function<br/>Docs: split on<br/>## → ### → paragraph"]
+        C2["Recursive split<br/>still > 500 tokens?<br/>try next separator<br/>last resort: hard cut"]
+        C3["Merge + overlap<br/>pack up to 500 tokens<br/>+ last 50 tokens of<br/>previous chunk"]
+        C0 --> C1 --> C2 --> C3
+    end
+
+    subgraph S3["③ EMBEDDING + STORE — embeddings.py"]
+        direction TB
+        D1["Text = file path + chunk"]
+        D2["Code-aware tokenize<br/>getUserName → get, user, name<br/>stopwords out · stemming"]
+        D3["Feature hashing<br/>SHA-256(term) → slot 0–1023<br/>± sign bit"]
+        D4["L2 normalize<br/>dot product = cosine"]
+        D5[("Vector store<br/>chunk text + 1024-dim<br/>vector + metadata")]
+        D1 --> D2 --> D3 --> D4 --> D5
+    end
+
+    subgraph S4["④ HYBRID RETRIEVAL — rag.py"]
+        direction TB
+        Q0(["User question"])
+        Q1["Embed question<br/>with the same embedder"]
+        Q2["Stage 1: vector search<br/>top max(k × 10, 30)<br/>candidates"]
+        Q3["Stage 2: re-rank<br/>0.55 × cosine<br/>+ 0.30 × keyword overlap<br/>+ 0.15 × file-path match"]
+        Q4["Top-k evidence<br/>k = 6 assistant · 3 risk"]
+        Q0 --> Q1 --> Q2 --> Q3 --> Q4
+    end
+
+    subgraph S5["⑤ AUGMENT + GENERATE — assistant.py"]
+        direction TB
+        R1["+ Risk engine facts<br/>score 0–100 + reasons"]
+        P1["Prompt: answer only from<br/>excerpts · cite files ·<br/>repo text = untrusted"]
+        G0{"GROQ_API_KEY?"}
+        G1["yes → Groq LLM<br/>gpt-oss-120b · temp 0.1<br/>retry with backoff"]
+        G2["no → Offline<br/>extractive answer"]
+        OUT(["Grounded answer<br/>with cited file paths"])
+        R1 --> P1 --> G0 --> G1 --> OUT
+        G0 --> G2 --> OUT
+    end
+
+    S1 == "files + history" ==> S2
+    S2 == "chunks" ==> S3
+    S3 == "stored vectors<br/>searched at query time" ==> S4
+    S4 == "evidence" ==> S5
+
+    classDef source fill:#e8f1fb,stroke:#3b82f6,color:#0f172a
+    classDef chunk fill:#fff4e5,stroke:#f59e0b,color:#0f172a
+    classDef embed fill:#f3e8ff,stroke:#8b5cf6,color:#0f172a
+    classDef store fill:#dcfce7,stroke:#16a34a,color:#0f172a
+    classDef query fill:#fde8ef,stroke:#e11d48,color:#0f172a
+    classDef gen fill:#e0f7f5,stroke:#0d9488,color:#0f172a
+
+    class A1,A2,A3 source
+    class C0,C1,C2,C3 chunk
+    class D1,D2,D3,D4 embed
+    class D5 store
+    class Q0,Q1,Q2,Q3,Q4 query
+    class R1,P1,G0,G1,G2,OUT gen
