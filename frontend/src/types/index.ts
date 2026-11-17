@@ -9,6 +9,13 @@ export type RiskItem = {
 export type Failure = {
   id: string; commit: string; workflow: string; event: string;
   repo: string; branch: string; cause: string; time: string; severity: Severity;
+  flaky?: boolean; // the same workflow also passed on this exact commit
+};
+
+export type FlakyWorkflow = {
+  workflow: string; runs: number; failures: number; flips: number; flipRate: number;
+  level: "flaky" | "suspected";
+  events: { kind: string; commit: string; failedRuns: string[]; passedRuns: string[]; detail: string }[];
 };
 
 export type FailureExplanation = {
@@ -59,6 +66,7 @@ export type IntelligenceOverview = {
   deployTrend: DeployPoint[];
   riskItems: RiskItem[];
   failures: Failure[];
+  flaky?: FlakyWorkflow[];
   summary: string;
   windowDays: number;
   evidence: Evidence[];

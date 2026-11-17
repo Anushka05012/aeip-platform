@@ -1,6 +1,6 @@
 import { Failure } from "@/types";
 import { relativeTime, shortSha } from "@/lib/format";
-import { Button, td, th } from "@/components/ui";
+import { Badge, Button, td, th } from "@/components/ui";
 
 type Props = { items: Failure[]; onExplain?: (failure: Failure) => void; selectedId?: string; loadingId?: string };
 
@@ -31,6 +31,7 @@ export default function FailuresFeed({ items, onExplain, selectedId, loadingId }
                                     <div className="flex items-center gap-2">
                                         <span className="w-[7px] h-[7px] rounded-full bg-bad shrink-0" aria-label="failed" />
                                         <span className="text-ink font-medium">{workflowOf(f)}</span>
+                                        {f.flaky && <span title="The same workflow passed on this exact commit"><Badge tone="warn">flaky</Badge></span>}
                                     </div>
                                     {message && <p className="mt-0.5 pl-[15px] text-[12px] text-muted truncate max-w-[320px]" title={message}>{message}</p>}
                                 </td>
