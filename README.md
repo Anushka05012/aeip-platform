@@ -3,7 +3,7 @@
 Software engineering analytics and CI/CD failure intelligence. Point AEIP at a GitHub
 repository and it pulls the commits, pull requests, CI runs and source code, then shows:
 
-- **Delivery health**: DORA metrics (deployment frequency, lead time, change failure rate)
+- **Delivery health**: DORA metrics (deployment frequency, lead time, change failure rate, time to restore)
 - **Change risk**: which files are most likely to break, and why
 - **CI failure explanations**: was a failed build caused by its commit, with evidence and confidence
 - **Ask the codebase**: plain-English questions answered from the repository, with sources

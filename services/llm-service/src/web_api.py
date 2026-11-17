@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .assistant import RepositoryAssistant
 from .domain import RepositorySnapshot
-from .dora import calculate_dora
+from .dora import DoraMetrics, calculate_dora
 from .embeddings import tokenize
 from .failure_analysis import FailureAnalyzer
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
@@ -85,6 +85,13 @@ def sync_to_database(repository: str) -> dict[str, Any]:
     except (urllib.error.URLError, OSError):
         detail = f"skipped: ingestion service not running at {base}"
     return {"stage": "Database (PostgreSQL)", "detail": detail, "ms": round((time.perf_counter() - started) * 1000)}
+
+
+def _restore_delta(dora: DoraMetrics) -> str:
+    if not dora.restored_incidents:
+        return f"{dora.open_incidents} failure(s) not yet restored" if dora.open_incidents else "no failures to restore"
+    text = f"median of {dora.restored_incidents} recover{'y' if dora.restored_incidents == 1 else 'ies'}"
+    return text + (f" · {dora.open_incidents} still failing" if dora.open_incidents else "")
 
 
 def groq_client_if_configured():
@@ -172,7 +179,8 @@ class IntelligenceDemoService:
         dora = calculate_dora(releases, start, now)
         stages.append({"stage": "DORA metrics", "detail": (
             f"{dora.deployment_frequency_per_week}/week deploys, "
-            f"{dora.change_failure_rate_percent}% change failure rate"), "ms": 0})
+            f"{dora.change_failure_rate_percent}% change failure rate, "
+            f"time to restore {dora.time_to_restore_hours if dora.time_to_restore_hours is not None else 'n/a'}h"), "ms": 0})
 
         entry = AnalyzedRepository(snapshot, releases, pipeline, indexed, risks, now, start, window_days, source,
                                    analyzed_at or datetime.now().astimezone().isoformat(timespec="seconds"), stages)
@@ -259,6 +267,9 @@ class IntelligenceDemoService:
                  "delta": "commit to successful run" if dora.lead_time_hours else "no matching commits", "up": True},
                 {"label": "Change failure rate", "value": str(dora.change_failure_rate_percent), "unit": "%",
                  "delta": f"{sum(1 for item in window if item.status == 'failure')} of {len(window)} runs failed", "up": False},
+                {"label": "Time to restore", "value": str(dora.time_to_restore_hours if dora.time_to_restore_hours is not None else "n/a"),
+                 "unit": "h" if dora.time_to_restore_hours is not None else "",
+                 "delta": _restore_delta(dora), "up": dora.open_incidents == 0},
                 {"label": "Highest file risk", "value": str(primary.score if primary else 0), "unit": "/100",
                  "delta": f"{primary.level} · {primary.path.rsplit('/', 1)[-1]}" if primary else "no data",
                  "up": not primary or primary.level != "high"},
