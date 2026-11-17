@@ -1,3 +1,0 @@
-npm run type-check
-error TS2322: Type 'string' is not assignable to type 'number'.
-  src/config.ts:42:7

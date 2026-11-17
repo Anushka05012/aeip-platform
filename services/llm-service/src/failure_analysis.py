@@ -48,6 +48,13 @@ CATEGORIES: list[tuple[str, re.Pattern[str]]] = [
         r"could not resolve host|temporary failure in name resolution|no space left on device|"
         r"runner .*(lost|shutdown)|the operation was canceled|service unavailable|network is unreachable|"
         r"secondary rate limit|resource not accessible by integration)")),
+    # Docker and environment rules come from the failure-engine prototype (feature/failure-engine-neeraj).
+    ("docker / container", re.compile(
+        r"(?i)(failed to solve|docker build|dockerfile|error building image|pull access denied|"
+        r"manifest unknown|executor failed running)")),
+    ("environment / setup", re.compile(
+        r"(?i)(command not found|permission denied|executable file not found|"
+        r"is not recognized as an internal or external command|env(ironment)? variable .* (not set|missing))")),
     ("dependency / install", re.compile(
         r"(?i)(npm err|could not find a version|no matching distribution|ERESOLVE|peer dep|"
         r"pip.*(error|failed)|ModuleNotFoundError|cannot find module|unable to resolve dependency|lockfile)")),
@@ -65,6 +72,10 @@ CATEGORIES: list[tuple[str, re.Pattern[str]]] = [
 NEXT_STEPS = {
     "infrastructure / flaky": ["Re-run the failed job; if it passes, record it as flaky rather than a regression.",
                                "Check runner, network and external service status at the failure time."],
+    "docker / container": ["Build the image locally at the triggering commit and find the first failing Dockerfile step.",
+                           "Check base image tags, registry access and the build command that step runs."],
+    "environment / setup": ["Check that the CI runner has the required tools, files, permissions and secrets.",
+                            "Compare the workflow/setup steps with the last successful run."],
     "dependency / install": ["Compare dependency manifests/lockfile changes in the triggering commit.",
                              "Reproduce with a clean install locally (fresh virtualenv / node_modules)."],
     "lint / type check": ["Run the same linter/type checker locally on the changed files.",
@@ -233,6 +244,10 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
         if config_changed:
             signals.append(f"The commit changed configuration ({', '.join(config_changed)}) right before this "
                            "infrastructure error, so it is likely a misconfiguration introduced by the change")
+    if category == "environment / setup":
+        signals.append("Error output points to the CI environment (missing command, permission or setting)")
+        if config_changed:
+            signals.append(f"The commit changed configuration ({', '.join(config_changed)}), which can break the CI setup")
     if evidence.event == "schedule":
         signals.append("Run was triggered by a schedule, not by a code change")
     if evidence.pull_request:
@@ -249,7 +264,7 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
 
     if mentioned:
         verdict, confidence = "related", 0.85
-    elif category == "infrastructure / flaky" and config_changed:
+    elif category in ("infrastructure / flaky", "environment / setup", "docker / container") and config_changed:
         verdict, confidence = "related", 0.65
     elif category == "infrastructure / flaky":
         # A network error after a docs-only commit is the clearest "not caused by the change" case.
@@ -260,7 +275,7 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
         verdict, confidence = "uncertain", 0.35
     elif not source_changed:
         verdict, confidence = "unrelated", 0.55
-    elif category in ("test failure", "build / compile", "lint / type check"):
+    elif category in ("test failure", "build / compile", "lint / type check", "docker / container"):
         verdict, confidence = "related", 0.6
     else:
         verdict, confidence = "uncertain", 0.4

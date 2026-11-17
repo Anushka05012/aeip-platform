@@ -71,6 +71,36 @@ def test_network_error_after_docs_only_change_is_unrelated():
     assert verdict == "unrelated" and confidence == 0.8
 
 
+def test_docker_and_environment_failures_are_classified():
+    docker = ("Step 4/7 : RUN npm run build\n"
+              "Docker build failed to solve: process \"/bin/sh -c npm run build\" exited with code 1")
+    assert classify(docker) == "docker / container"
+    assert classify("/bin/sh: terraform: command not found") == "environment / setup"
+    assert classify("pip: command not found") == "environment / setup"
+    assert classify("Error: EACCES: permission denied, open '/app/out'") == "environment / setup"
+
+
+def _correlate_log(log, changed_files):
+    from datetime import datetime
+
+    from src.domain import Commit, Deployment
+    from src.failure_analysis import build_evidence, correlate
+
+    run = Deployment("r1", datetime(2026, 9, 1), "c1", "failure", name="CI/CD", branch="main", event="push", log=log)
+    commit = Commit("c1", datetime(2026, 9, 1), tuple(changed_files), 2, 1)
+    return correlate(build_evidence(run, commit, []), True)
+
+
+def test_missing_tool_without_config_change_is_uncertain():
+    verdict, _, category, _, _ = _correlate_log("ERROR: /bin/sh: terraform: command not found", ["src/app.py"])
+    assert (verdict, category) == ("uncertain", "environment / setup")
+
+
+def test_missing_tool_after_workflow_change_is_related():
+    verdict, _, category, _, _ = _correlate_log("ERROR: /bin/sh: terraform: command not found", [".github/workflows/ci.yml"])
+    assert (verdict, category) == ("related", "environment / setup")
+
+
 class FakeChat:
     def __init__(self, reply):
         self.reply = reply

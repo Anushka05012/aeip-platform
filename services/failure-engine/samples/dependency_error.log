@@ -1,5 +1,0 @@
-npm install
-npm ERR! code ERESOLVE
-npm ERR! ERESOLVE unable to resolve dependency tree
-npm ERR! Found: react@19.0.0
-npm ERR! Could not resolve dependency: peer react@^18.0.0
