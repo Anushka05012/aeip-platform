@@ -8,7 +8,17 @@ repository and it pulls the commits, pull requests, CI runs and source code, the
 - **CI failure explanations**: was a failed build caused by its commit, with evidence and confidence
 - **Ask the codebase**: plain-English questions answered from the repository, with sources
 
-## Run it locally
+## Run it with Docker (one command)
+
+```bash
+docker compose up --build
+```
+
+Dashboard on http://localhost:3000, with PostgreSQL + pgvector, the intelligence API and the ingestion
+service. Keys and sign-in are optional: copy [.env.docker.example](.env.docker.example) to `.env.docker`.
+Hosting on Supabase + Render + Vercel: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Run it locally (without Docker)
 
 You need **Python 3.11+**, **Node.js 20+** and **git**.
 

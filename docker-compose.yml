@@ -1,0 +1,76 @@
+# The whole AEIP platform on one machine:
+#   cp .env.docker.example .env.docker   (optional: keys, login, roles)
+#   docker compose up --build
+# Dashboard: http://localhost:3000   API: http://localhost:8001/health   Ingestion: http://localhost:4000
+# Ports taken? AEIP_WEB_PORT=3100 AEIP_API_PORT=8101 AEIP_INGESTION_PORT=4100 docker compose up
+
+name: aeip
+
+x-env-file: &env-file
+  env_file:
+    - path: .env.docker
+      required: false
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: aeip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aeip-local-only}
+      POSTGRES_DB: aeip
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Not published to the host: only the services below reach it. To inspect it, run
+    # `docker compose exec db psql -U aeip`.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeip -d aeip"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  intelligence:
+    build: ./services/llm-service
+    <<: *env-file
+    environment:
+      AEIP_VECTOR_STORE: pgvector
+      DATABASE_URL: postgresql://aeip:${POSTGRES_PASSWORD:-aeip-local-only}@db:5432/aeip
+      AEIP_SERVICE_TOKEN: ${AEIP_SERVICE_TOKEN:-change-me-local-service-token}
+      INGESTION_API_URL: http://ingestion:4000
+    volumes:
+      - intelligence-cache:/app/data/cache
+    ports:
+      - "127.0.0.1:${AEIP_API_PORT:-8001}:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: ingestion/Dockerfile
+    <<: *env-file
+    environment:
+      DATABASE_URL: postgresql://aeip:${POSTGRES_PASSWORD:-aeip-local-only}@db:5432/aeip
+    ports:
+      - "127.0.0.1:${AEIP_INGESTION_PORT:-4000}:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_INGESTION_API_URL: http://localhost:4000
+    <<: *env-file
+    environment:
+      INTELLIGENCE_API_URL: http://intelligence:8001
+      AEIP_SERVICE_TOKEN: ${AEIP_SERVICE_TOKEN:-change-me-local-service-token}
+    ports:
+      - "127.0.0.1:${AEIP_WEB_PORT:-3000}:3000"
+    depends_on:
+      - intelligence
+
+volumes:
+  db-data:
+  intelligence-cache:

@@ -7,7 +7,10 @@ import { verifySignature } from "./signature";
 
 const app = express();
 
-app.use(cors({ origin: ["http://localhost:3000", "http://127.0.0.1:3000"] }));
+// The dashboard's origin(s); add deployed URLs with AEIP_ALLOWED_ORIGINS (comma-separated).
+const allowedOrigins = ["http://localhost:3000", "http://127.0.0.1:3000",
+  ...(process.env.AEIP_ALLOWED_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean)];
+app.use(cors({ origin: allowedOrigins }));
 
 app.use(
   express.json({
@@ -139,7 +142,7 @@ app.post("/webhooks/github", async (req: any, res) => {
   }
 });
 
-const PORT = 4000;
+const PORT = Number(process.env.PORT ?? 4000);
 app.listen(PORT, () => {
   console.log(`Webhook listener running on http://localhost:${PORT}`);
 });
