@@ -3,10 +3,10 @@
 import { type ReactNode, useEffect, useState } from "react";
 import IncidentTimeline from "@/components/incidents/IncidentTimeline";
 import { Badge, Button, Empty, Notice, PageHeader, Panel, type Tone } from "@/components/ui";
-import { getIncident, listIncidents } from "@/lib/intelligenceApi";
+import { getIncident, listIncidents, sendCauseFeedback } from "@/lib/intelligenceApi";
 import { formatDuration, shortSha, utcTime } from "@/lib/format";
 import { useSession } from "@/lib/useSession";
-import { IncidentDetail, IncidentSummary, RootCause } from "@/types";
+import { CauseVerdict, IncidentDetail, IncidentSummary, RootCause } from "@/types";
 
 const confidenceTone: Record<RootCause["confidence"], Tone> = { likely: "bad", possible: "warn", weak: "neutral" };
 const signalNames: Record<string, string> = {
@@ -20,7 +20,25 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   </section>;
 }
 
-function CauseCard({ cause, rank }: { cause: RootCause; rank: number }) {
+function Verdict({ verdict, canVote, busy, onVote }: {
+  verdict?: CauseVerdict; canVote: boolean; busy: boolean; onVote: (verdict: CauseVerdict) => void;
+}) {
+  return <div className="mt-3 flex items-center gap-2 flex-wrap">
+    {verdict === "confirmed" && <Badge tone="bad">confirmed cause</Badge>}
+    {verdict === "rejected" && <Badge tone="neutral">not the cause</Badge>}
+    {canVote && <>
+      <Button variant={verdict === "confirmed" ? "primary" : "secondary"} className="h-7" disabled={busy}
+        aria-pressed={verdict === "confirmed"} onClick={() => onVote("confirmed")}>This was the cause</Button>
+      <Button variant="ghost" className="h-7" disabled={busy} aria-pressed={verdict === "rejected"}
+        onClick={() => onVote("rejected")}>Not it</Button>
+    </>}
+  </div>;
+}
+
+function CauseCard({ cause, rank, verdict, canVote, busy, onVote }: {
+  cause: RootCause; rank: number; verdict?: CauseVerdict; canVote: boolean; busy: boolean;
+  onVote: (verdict: CauseVerdict) => void;
+}) {
   return <div className={`rounded-md border p-3 ${rank === 0 ? "border-line-strong bg-paper" : "border-line"}`}>
     <div className="flex items-center gap-2 flex-wrap">
       <span className="font-mono text-[12px] text-muted">#{rank + 1}</span>
@@ -40,12 +58,35 @@ function CauseCard({ cause, rank }: { cause: RootCause; rank: number }) {
         {signalNames[key] ?? key} <span className="font-mono text-ink-2">{Math.round((value ?? 0) * 100)}%</span>
       </span>)}
     </div>
+    <Verdict verdict={verdict} canVote={canVote} busy={busy} onVote={onVote} />
   </div>;
 }
 
-function Detail({ incident, onAi, busy }: { incident: IncidentDetail; onAi: () => void; busy: boolean }) {
+function Detail({ incident, onAi, busy, onFeedback }: {
+  incident: IncidentDetail; onAi: () => void; busy: boolean;
+  onFeedback: (feedback: Record<string, CauseVerdict>) => void;
+}) {
   const top = incident.candidates[0];
   const { can } = useSession();
+  const [voting, setVoting] = useState("");
+  const [learned, setLearned] = useState("");
+  const [voteError, setVoteError] = useState("");
+
+  async function vote(ref: string, verdict: CauseVerdict) {
+    setVoting(ref);
+    setVoteError("");
+    try {
+      const result = await sendCauseFeedback(incident.id, ref, verdict);
+      onFeedback(result.feedback);
+      setLearned(verdict === "confirmed"
+        ? `Recorded: ${result.files.length} file${result.files.length === 1 ? "" : "s"} labelled as having broken production. ${result.riskModel?.message ?? ""}`
+        : "Recorded as not the cause.");
+    } catch (reason) {
+      setVoteError(reason instanceof Error ? reason.message : "Could not save the verdict.");
+    } finally {
+      setVoting("");
+    }
+  }
   return <Panel
     title={<span>{incident.title}</span>}
     aside={can("member") && <Button variant="ghost" className="h-7" onClick={onAi} disabled={busy}>{busy ? "Writing…" : "AI summary"}</Button>}
@@ -65,9 +106,16 @@ function Detail({ incident, onAi, busy }: { incident: IncidentDetail; onAi: () =
 
       <Field label="Likely root cause, ranked">
         {incident.candidates.length
-          ? <div className="flex flex-col gap-2">{incident.candidates.map((cause, index) => <CauseCard key={cause.ref + cause.title} cause={cause} rank={index} />)}</div>
+          ? <div className="flex flex-col gap-2">{incident.candidates.map((cause, index) => <CauseCard
+              key={cause.ref + cause.title} cause={cause} rank={index} verdict={incident.feedback?.[cause.ref]}
+              canVote={can("member")} busy={!!voting} onVote={(verdict) => vote(cause.ref, verdict)} />)}</div>
           : <p className="text-[13px] text-ink-2">No deploy, migration, config change or commit went live in the 24 hours before this incident.</p>}
         {top?.confidence === "weak" && <div className="mt-2"><Notice tone="warn">Weak evidence: confirm with the timeline before acting.</Notice></div>}
+        {voteError && <div className="mt-2"><Notice tone="bad">{voteError}</Notice></div>}
+        {learned && <p className="mt-2 text-[12.5px] text-ink-2" role="status">{learned}</p>}
+        {!!incident.candidates.length && can("member") && !learned && <p className="mt-2 text-[11.5px] text-muted">
+          Confirming the cause teaches AEIP which changes break this repository; Change risk uses it once enough are known.
+        </p>}
       </Field>
 
       <Field label="Suggested next steps">
@@ -148,7 +196,8 @@ export default function IncidentsPage() {
         </ul>
       </Panel>
       <div>
-        {selected ? <Detail incident={selected} busy={loading === selected.id} onAi={() => open(selected.id, true)} />
+        {selected ? <Detail key={selected.id} incident={selected} busy={loading === selected.id} onAi={() => open(selected.id, true)}
+          onFeedback={(feedback) => setSelected((current) => current && { ...current, feedback })} />
           : <div className="border border-dashed border-line-strong rounded-md p-6 text-[13px] text-muted">Choose an incident.</div>}
       </div>
     </div>}

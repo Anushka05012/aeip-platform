@@ -16,7 +16,11 @@ limits) still send people digging through their own commits.
 - **CI failure explanations**: was a failed build caused by its commit, or by flakiness or
   infrastructure? A verdict with confidence, evidence and next steps; flaky workflows are detected.
 - **Change risk**: which files are most likely to break, and why (change frequency, churn,
-  complexity, test gaps, blast radius, dependency updates).
+  complexity, test gaps, blast radius, dependency updates). AEIP also **learns from what broke
+  this repository before**: past bug fixes, and incident causes engineers confirm with one click
+  on the Incidents page. Once it has 50 labelled files it ranks with a per-repository model; on
+  eight real repositories that model averaged AUC 0.737 against 0.647 for fixed weights
+  ([evaluation](docs/EVALUATION.md), section 6).
 - **Delivery health**: all four DORA metrics.
 - **Ask the codebase**: plain-English questions answered from the code, docs and history, with
   sources, using a local embedding model (code never leaves your infrastructure).

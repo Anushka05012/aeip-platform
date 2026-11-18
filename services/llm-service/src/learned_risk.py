@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Iterable, Sequence
 
 from .domain import Commit, RepositorySnapshot
+from .events import as_utc
 from .risk_engine import RiskEngine, RiskResult, is_bug_fix
 
 FEATURES = ("fixedScore", "changes", "churn", "complexity", "testGap", "blastRadius", "dependencies", "pastFixes",
@@ -196,11 +197,12 @@ def rows_at(snapshot: RepositorySnapshot, cutoff: datetime, window_days: int, ho
     end = cutoff + timedelta(days=horizon_days)
     fixed_later = {path for commit in snapshot.commits if cutoff <= commit.authored_at < end and is_bug_fix(commit.message)
                    for path in commit.files}
-    broke_later = {path for label in incidents if cutoff <= label.at < end for path in label.files}
+    broke_later = {path for label in incidents if as_utc(cutoff) <= as_utc(label.at) < as_utc(end) for path in label.files}
     window_start = cutoff - timedelta(days=window_days)
     rows = []
     for result in results:
-        past = sum(1 for label in incidents if window_start <= label.at < cutoff and result.path in label.files)
+        past = sum(1 for label in incidents
+                   if as_utc(window_start) <= as_utc(label.at) < as_utc(cutoff) and result.path in label.files)
         source = "incident" if result.path in broke_later else "bug fix" if result.path in fixed_later else ""
         rows.append(TrainingRow(result.path, cutoff, features(result, past), bool(source), source))
     return rows
@@ -233,7 +235,7 @@ class RiskLearning:
 
     def past_incidents(self, path: str, incidents: Sequence[IncidentLabel], now: datetime) -> int:
         start = now - timedelta(days=self.window_days)
-        return sum(1 for label in incidents if start <= label.at < now and path in label.files)
+        return sum(1 for label in incidents if as_utc(start) <= as_utc(label.at) < as_utc(now) and path in label.files)
 
     def assess(self, result: RiskResult, past_incidents: int = 0) -> dict[str, Any] | None:
         """Probability and the signals behind it, when the model is active."""
@@ -242,15 +244,22 @@ class RiskLearning:
         x = features(result, past_incidents)
         return {"probability": round(self.model.probability(x), 3), "drivers": self.model.explain(x)}
 
-    def status(self) -> dict[str, Any]:
+    def status(self, saved_causes: int = 0) -> dict[str, Any]:
+        """`saved_causes`: confirmed incident causes on record, including ones too recent to train on yet."""
         weights = self.model.to_json()["weights"] if self.model else {}
+        if self.active:
+            message = (f"Learned from {self.positives} files that later broke "
+                       f"({self.incident_labels} from confirmed incidents)")
+        else:
+            message = f"Learning: {self.positives} of {USE_FROM_POSITIVES} labelled files"
+            if saved_causes:
+                message += f"; {saved_causes} confirmed incident cause{'s' if saved_causes != 1 else ''} saved"
+            message += ("; the history is too short to learn from yet" if not self.rows else "") + \
+                "; using the fixed score until then"
         return {
             "active": self.active, "labels": self.positives, "incidentLabels": self.incident_labels,
             "bugFixLabels": self.positives - self.incident_labels, "examples": self.rows,
-            "needed": USE_FROM_POSITIVES,
-            "message": (f"Learned from {self.positives} files that later broke "
-                        f"({self.incident_labels} from confirmed incidents)") if self.active else
-                       f"Learning: {self.positives} of {USE_FROM_POSITIVES} labelled files; using the fixed score until then",
+            "needed": USE_FROM_POSITIVES, "savedCauses": saved_causes, "message": message,
             "weights": [{"signal": LABELS[name], "weight": round(value, 3)}
                         for name, value in sorted(weights.items(), key=lambda item: -abs(item[1]))],
         }

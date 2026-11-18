@@ -6,8 +6,17 @@ export type RiskItem = {
   file: string; score: number; reason: string;
   level?: string; changes?: number; churn?: number; complexity?: number;
   hasTests?: boolean; testTouchRatio?: number; dependents?: number; dependencyChanges?: number;
+  pastFixes?: number;
   breakdown?: RiskBreakdown;
+  /** From the repository's learned model, once it has enough labels (see RiskModel). */
+  learned?: { probability: number; drivers: string[] } | null;
 };
+/** What AEIP has learned about which changes break this repository. */
+export type RiskModel = {
+  active: boolean; labels: number; incidentLabels: number; bugFixLabels: number; examples: number;
+  needed: number; message: string; weights: { signal: string; weight: number }[];
+};
+export type CauseVerdict = "confirmed" | "rejected";
 export type RiskBreakdown = {
   frequency: number; churn: number; complexity: number; testGap: number; blastRadius: number; dependencies: number;
 };
@@ -73,6 +82,7 @@ export type IntelligenceOverview = {
   failures: Failure[];
   flaky?: FlakyWorkflow[];
   incidents?: IncidentSummary[];
+  riskModel?: RiskModel | null;
   summary: string;
   windowDays: number;
   evidence: Evidence[];
@@ -126,4 +136,6 @@ export type TimelineEntry = {
 export type IncidentDetail = IncidentSummary & {
   candidates: RootCause[]; timeline: TimelineEntry[]; narrative: string; nextSteps: string[];
   narrativeMode: "rules" | "groq";
+  /** Engineers' verdicts on the candidates, by candidate ref. */
+  feedback?: Record<string, CauseVerdict>;
 };

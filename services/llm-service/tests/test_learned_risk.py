@@ -111,7 +111,9 @@ def test_confirming_a_demo_incident_cause_becomes_a_training_label(tmp_path):
     top = detail["candidates"][0]
     result = service.record_feedback(None, incident["id"], top["ref"], "confirmed", "ana")
     assert result["feedback"] == {top["ref"]: "confirmed"} and result["files"]
-    assert result["riskModel"]["incidentLabels"] >= 0  # demo history is short: still learning
+    assert "1 confirmed incident cause saved" in result["riskModel"]["message"]  # demo history is short
+    overview = service.overview()  # demo times have no time zone; saved verdicts are UTC
+    assert overview["riskModel"]["savedCauses"] == 1 and overview["riskItems"]
     assert service.incident(incident["id"])["feedback"] == {top["ref"]: "confirmed"}
     assert len(service.feedback.labels(service.risk_model()["repository"])) == 1
     with pytest.raises(KeyError):

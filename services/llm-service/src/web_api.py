@@ -287,7 +287,7 @@ class IntelligenceDemoService:
                                    risk_now, include)
         started = time.perf_counter()
         self._learn(entry)
-        stages.append({"stage": "Risk learning", "detail": entry.learning.status()["message"] if entry.learning else "skipped",
+        stages.append({"stage": "Risk learning", "detail": self._risk_status(entry)["message"],
                        "ms": round((time.perf_counter() - started) * 1000)})
         with self._lock:
             self.repositories[snapshot.repository] = entry
@@ -298,6 +298,10 @@ class IntelligenceDemoService:
         entry.learning = learn(entry.snapshot, entry.risk_now or entry.now, window_days=min(entry.window_days, 90),
                                incidents=self.feedback.labels(entry.snapshot.repository), include=entry.include)
 
+    def _risk_status(self, entry: AnalyzedRepository) -> dict[str, Any]:
+        saved = len(self.feedback.labels(entry.snapshot.repository))
+        return entry.learning.status(saved) if entry.learning else {"active": False, "message": "not trained"}
+
     def _learned(self, entry: AnalyzedRepository, item: RiskResult) -> dict[str, Any] | None:
         if not entry.learning:
             return None
@@ -306,7 +310,7 @@ class IntelligenceDemoService:
 
     def risk_model(self, repository: str | None = None) -> dict[str, Any]:
         entry = self._get(repository)
-        status = entry.learning.status() if entry.learning else {"active": False, "message": "not trained"}
+        status = self._risk_status(entry)
         return {"repository": entry.snapshot.repository} | status
 
     def record_feedback(self, repository: str | None, incident_id: str, ref: str, verdict: str,
@@ -324,7 +328,7 @@ class IntelligenceDemoService:
         self._learn(entry)
         return {"repository": entry.snapshot.repository, "incidentId": incident_id, "ref": ref, "verdict": verdict,
                 "files": sorted(files), "feedback": self.feedback.for_incident(entry.snapshot.repository, incident_id),
-                "riskModel": entry.learning.status() if entry.learning else None}
+                "riskModel": self._risk_status(entry)}
 
     def _get(self, repository: str | None) -> AnalyzedRepository:
         name = repository or DEMO_REPOSITORY
@@ -423,7 +427,7 @@ class IntelligenceDemoService:
                  "breakdown": item.breakdown(), "learned": self._learned(entry, item)}
                 for item in entry.risks[:25]
             ],
-            "riskModel": entry.learning.status() if entry.learning else None,
+            "riskModel": self._risk_status(entry),
             "failures": [
                 {
                     "id": deployment.id,

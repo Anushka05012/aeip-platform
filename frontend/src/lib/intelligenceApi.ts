@@ -1,4 +1,4 @@
-import { AssistantAnswer, FailureExplanation, IncidentDetail, IncidentSummary, IntelligenceOverview, RepositorySummary } from "@/types";
+import { AssistantAnswer, CauseVerdict, FailureExplanation, IncidentDetail, IncidentSummary, IntelligenceOverview, RepositorySummary, RiskModel } from "@/types";
 
 // Same-origin backend-for-frontend (src/app/api/aeip): it adds auth and forwards to INTELLIGENCE_API_URL.
 const baseUrl = "/api/aeip";
@@ -82,6 +82,15 @@ export function listIncidents(repository = getActiveRepository()): Promise<{
 }> {
   const query = repository ? `?repository=${encodeURIComponent(repository)}` : "";
   return request(`/api/incidents${query}`);
+}
+
+/** Confirm or reject a root-cause candidate; confirmed causes teach the repository's risk model. */
+export function sendCauseFeedback(incidentId: string, ref: string, verdict: CauseVerdict,
+  repository = getActiveRepository()): Promise<{ feedback: Record<string, CauseVerdict>; files: string[]; riskModel: RiskModel | null }> {
+  return request("/api/incidents/feedback", {
+    method: "POST",
+    body: JSON.stringify({ incidentId, ref, verdict, repository: repository || undefined }),
+  });
 }
 
 export function getIncident(id: string, useAi = false, repository = getActiveRepository()): Promise<IncidentDetail> {
