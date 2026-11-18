@@ -11,6 +11,7 @@ Measured 2026-11-18 with `services/llm-service/scripts/evaluate.py`; raw numbers
 | Which change caused this incident? (300 generated incidents) | top-1 84.3%, top-3 98.3% | "most recent change" heuristic: top-1 63.0% |
 | Can ask-the-codebase find the implementing file? (25 questions, 100 files) | Hit@5 80.0%, MRR 0.544 (semantic) | hashing Hit@5 68.0%; random ≈7% |
 | Does risk predict later bug fixes? (real history) | click: AUC 0.628, P@3 40.0%; black: AUC 0.609, P@3 52.1% | random AUC 0.5; click: change count AUC 0.654, base rate 31.7%; black: change count AUC 0.730, base rate 31.2% |
+| Does a per-repository learned model rank risky files better? (8 real repositories) | with 50+ labels: AUC 0.737, worse than fixed by > 0.02 on 14 of 58 dates | fixed weights 0.647; change count 0.677 |
 | Does AEIP show why a real CI build failed? (347 held-out logs, public LogChunks labels) | failure reason found in 83.6%, line recall 0.615 | before: 72.6%; last 40 lines: 62.0% |
 
 ## 1. CI failure verdicts
@@ -134,6 +135,49 @@ and recognises failure wording without the word "error" (linter rule ids, Elixir
 TAP `not ok`). The verdict benchmark (section 1) is unchanged by this.
 
 Limits: Travis CI logs (the dataset was collected in 2019, before GitHub Actions); the labels mark where the reason is, not whether the commit caused it.
+
+## 6. Learning risk from the repository's own history
+
+`src/learned_risk.py` fits a logistic regression per repository on the fixed score's signals plus past bug
+fixes and past confirmed incidents. It is anchored on the fixed score (unpenalised input; every other weight
+is pulled towards zero, L2 = 20), so with few labels it ranks like the fixed score. At each past date T,
+every 60 days, it is trained only on earlier dates whose 90-day outcome was known by T, then ranks the files changed
+in the 90 days before T; a file counts as buggy if a bug-fix commit touches it in the 90 days after T (the
+public repositories have no incident history, so only bug-fix labels are used here). *Riskiest 20%*
+is the share of buggy files caught when only the riskiest fifth of files is reviewed, the gating metric of
+Meta's Diff Risk Score paper.
+
+| Repository | dates | learned AUC | fixed AUC | change-count AUC | first design (unanchored) AUC | riskiest 20%: learned | riskiest 20%: fixed |
+|---|---|---|---|---|---|---|---|
+| click | 23 | 0.602 | 0.610 | 0.661 | 0.632 | 24.2% | 36.0% |
+| black | 32 | 0.770 | 0.663 | 0.745 | 0.774 | 42.3% | 39.1% |
+| flask | 19 | 0.636 | 0.603 | 0.596 | 0.638 | 27.4% | 22.1% |
+| requests | 4 | 0.776 | 0.765 | 0.749 | 0.703 | 62.5% | 62.5% |
+| httpx | 17 | 0.636 | 0.687 | 0.658 | 0.618 | 25.7% | 33.6% |
+| jinja (held out) | 8 | 0.463 | 0.545 | 0.523 | 0.460 | 18.3% | 23.7% |
+| starlette (held out) | 17 | 0.567 | 0.463 | 0.549 | 0.551 | 33.1% | 16.4% |
+| rich (held out) | 28 | 0.720 | 0.655 | 0.658 | 0.729 | 44.0% | 32.6% |
+
+Pooled over all repositories and dates, by how many labelled (later-fixed) files the model had to learn from:
+
+| Labels available | dates | learned AUC | fixed AUC | change-count AUC | dates where learned is worse than fixed by > 0.02 |
+|---|---|---|---|---|---|
+| 10-49 | 90 | 0.614 | 0.605 | 0.636 | 33 |
+| 50+ | 58 | 0.737 | 0.647 | 0.677 | 14 |
+
+**Reading.** The result is mixed and is reported as such. The first design (no anchor, weak L2) was scored on
+click, black, flask, requests and httpx: it beat the fixed weights on three and lost on two, almost always when
+it had fewer than 50 labels. The anchor was added after that and checked once on three repositories not used
+before (jinja, starlette, rich). With fewer than 50 labels the learned model is not reliably better than the
+fixed score. With 50 or more it averages AUC 0.737 against 0.647 (fixed) and 0.677 (change count),
+though it is still worse than the fixed score on 14 of 58 individual dates. AEIP therefore
+uses it only from 50 labelled files (`USE_FROM_POSITIVES`) and otherwise shows the fixed
+score with "learning: N of 50". That threshold was read off this table, so it is a finding of this
+evaluation, not an independent test. Simple change counts remain a strong baseline, as in the defect-prediction
+literature.
+
+In production the labels also include changes that engineers confirm as an incident's cause (`feedback.py`),
+which public repositories do not have; that part is tested in `tests/test_learned_risk.py`, not measured here.
 
 ## Not yet measured
 

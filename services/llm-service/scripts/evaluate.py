@@ -1,12 +1,15 @@
 """Reproduce AEIP's evaluation and write data/evaluation/results.json + docs/EVALUATION.md.
 
-    python scripts/evaluate.py --repos <dir>          # <dir> holds git clones of pallets/click and psf/black
+    python scripts/evaluate.py --repos <dir>          # <dir> holds git clones (see below)
     python scripts/evaluate.py                        # only the benchmarks that need no clones
     python scripts/evaluate.py --datasets <dir>       # adds public datasets found in <dir> (see below)
 
 Get the clones (read-only; nothing in them is executed):
     git clone https://github.com/pallets/click.git <dir>/click
     git clone https://github.com/psf/black.git <dir>/black
+    # learned risk (section 6) also uses, when present:
+    #   pallets/flask psf/requests encode/httpx            (development)
+    #   pallets/jinja encode/starlette Textualize/rich     (held out: scored once, after the design was fixed)
 
 Public datasets (labelled by their authors, not by us):
     LogChunks (MSR 2020, CC-BY 4.0): https://zenodo.org/records/3632351 -> unzip into <datasets>/logchunks/
@@ -25,11 +28,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.embeddings import EmbeddingCache, HashingEmbedder  # noqa: E402
-from src.evaluation import (evaluate_incidents, evaluate_retrieval, evaluate_risk_history,  # noqa: E402
-                            evaluate_verdicts, git_documents, load_json)
+from src.evaluation import (evaluate_incidents, evaluate_learned_risk, evaluate_retrieval,  # noqa: E402
+                            evaluate_risk_history, evaluate_verdicts, git_documents, load_json)
 from src.public_benchmarks import evaluate_logchunks, logchunks_root  # noqa: E402
 
 DATA = ROOT / "data" / "evaluation"
+LEARNED_DEVELOPMENT = ("click", "black", "flask", "requests", "httpx")
+LEARNED_HELD_OUT = ("jinja", "starlette", "rich")
 REPORT = ROOT.parents[1] / "docs" / "EVALUATION.md"
 
 
@@ -63,6 +68,8 @@ def main() -> int:
         results["retrieval"] = retrieval
         results["risk"] = {name: evaluate_risk_history(args.repos / name, cutoffs=16, every_days=120)
                            for name in ("click", "black") if (args.repos / name).exists()}
+        results["learnedRisk"] = {name: evaluate_learned_risk(args.repos / name) | {"heldOut": name in LEARNED_HELD_OUT}
+                                  for name in LEARNED_DEVELOPMENT + LEARNED_HELD_OUT if (args.repos / name).exists()}
         print(f"all benchmarks in {time.perf_counter() - started:.1f}s")
 
     if args.datasets:
@@ -82,6 +89,28 @@ def main() -> int:
 
 def pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.1f}%"
+
+
+def fmt(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def pool_learned(learned: dict) -> dict:
+    """Mean AUC per method over every evaluated date of every repository, split by training labels."""
+    buckets: dict[str, list[dict]] = {"10-49": [], "50+": []}
+    for item in learned.values():
+        for row in item["rows"]:
+            if row["auc"].get("learned") is not None:
+                buckets["50+" if row["trainingPositives"] >= 50 else "10-49"].append(row)
+    pooled = {}
+    for bucket, rows in buckets.items():
+        def mean(name: str, rows: list[dict] = rows) -> float | None:
+            values = [row["auc"][name] for row in rows if row["auc"].get(name) is not None]
+            return round(sum(values) / len(values), 3) if values else None
+        pooled[bucket] = {"dates": len(rows), "learned": mean("learned"), "fixed": mean("fixed"),
+                          "changes": mean("changes"),
+                          "learnedWorse": sum(1 for row in rows if row["auc"]["learned"] < row["auc"]["fixed"] - 0.02)}
+    return pooled
 
 
 def render(results: dict) -> str:
@@ -113,6 +142,13 @@ def render(results: dict) -> str:
         bases = [f"{name}: change count AUC {item['meanAucChangeCountOnly']:.3f}, base rate {pct(item['meanBaseRate'])}"
                  for name, item in results["risk"].items()]
         lines.append(f"| Does risk predict later bug fixes? (real history) | {'; '.join(parts)} | random AUC 0.5; {'; '.join(bases)} |")
+    if results.get("learnedRisk"):
+        pooled = pool_learned(results["learnedRisk"])
+        enough = pooled["50+"]
+        lines.append(f"| Does a per-repository learned model rank risky files better? ({len(results['learnedRisk'])} real "
+                     f"repositories) | with 50+ labels: AUC {fmt(enough['learned'])}, worse than fixed by > 0.02 on "
+                     f"{enough['learnedWorse']} of {enough['dates']} dates | fixed weights {fmt(enough['fixed'])}; "
+                     f"change count {fmt(enough['changes'])} |")
     if "logchunks" in results:
         held, before, tail = (results["logchunks"]["test"][name] for name in ("aeip", "aeipPrevious", "tail40"))
         lines.append(f"| Does AEIP show why a real CI build failed? ({held['n']} held-out logs, public LogChunks labels) | "
@@ -269,6 +305,60 @@ def render(results: dict) -> str:
             "TAP `not ok`). The verdict benchmark (section 1) is unchanged by this.",
             "",
             "Limits: Travis CI logs (the dataset was collected in 2019, before GitHub Actions); the labels mark where the reason is, not whether the commit caused it.",
+        ]
+    if results.get("learnedRisk"):
+        learned = results["learnedRisk"]
+        pooled = pool_learned(learned)
+        lines += [
+            "",
+            "## 6. Learning risk from the repository's own history",
+            "",
+            "`src/learned_risk.py` fits a logistic regression per repository on the fixed score's signals plus past bug",
+            "fixes and past confirmed incidents. It is anchored on the fixed score (unpenalised input; every other weight",
+            "is pulled towards zero, L2 = 20), so with few labels it ranks like the fixed score. At each past date T,",
+            f"every {next(iter(learned.values()))['everyDays']} days, it is trained only on earlier dates whose 90-day "
+            "outcome was known by T, then ranks the files changed",
+            "in the 90 days before T; a file counts as buggy if a bug-fix commit touches it in the 90 days after T (the",
+            "public repositories have no incident history, so only bug-fix labels are used here). *Riskiest 20%*",
+            "is the share of buggy files caught when only the riskiest fifth of files is reviewed, the gating metric of",
+            "Meta's Diff Risk Score paper.",
+            "",
+            "| Repository | dates | learned AUC | fixed AUC | change-count AUC | first design (unanchored) AUC | "
+            "riskiest 20%: learned | riskiest 20%: fixed |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+        for name, item in learned.items():
+            auc, top = item["auc"], item["recall@20%"]
+            label = f"{name} (held out)" if item["heldOut"] else name
+            lines.append(f"| {label} | {item['datesEvaluated']} | {fmt(auc['learned'])} | {fmt(auc['fixed'])} | "
+                         f"{fmt(auc['changes'])} | {fmt(auc['learnedUnanchored'])} | {pct(top['learned'])} | {pct(top['fixed'])} |")
+        lines += [
+            "",
+            "Pooled over all repositories and dates, by how many labelled (later-fixed) files the model had to learn from:",
+            "",
+            "| Labels available | dates | learned AUC | fixed AUC | change-count AUC | dates where learned is worse than fixed by > 0.02 |",
+            "|---|---|---|---|---|---|",
+        ]
+        for bucket, item in pooled.items():
+            lines.append(f"| {bucket} | {item['dates']} | {fmt(item['learned'])} | {fmt(item['fixed'])} | "
+                         f"{fmt(item['changes'])} | {item['learnedWorse']} |")
+        lines += [
+            "",
+            "**Reading.** The result is mixed and is reported as such. The first design (no anchor, weak L2) was scored on",
+            "click, black, flask, requests and httpx: it beat the fixed weights on three and lost on two, almost always when",
+            "it had fewer than 50 labels. The anchor was added after that and checked once on three repositories not used",
+            "before (jinja, starlette, rich). With fewer than 50 labels the learned model is not reliably better than the",
+            f"fixed score. With 50 or more it averages AUC {fmt(pooled['50+']['learned'])} against "
+            f"{fmt(pooled['50+']['fixed'])} (fixed) and {fmt(pooled['50+']['changes'])} (change count),",
+            f"though it is still worse than the fixed score on {pooled['50+']['learnedWorse']} of "
+            f"{pooled['50+']['dates']} individual dates. AEIP therefore",
+            "uses it only from 50 labelled files (`USE_FROM_POSITIVES`) and otherwise shows the fixed",
+            "score with \"learning: N of 50\". That threshold was read off this table, so it is a finding of this",
+            "evaluation, not an independent test. Simple change counts remain a strong baseline, as in the defect-prediction",
+            "literature.",
+            "",
+            "In production the labels also include changes that engineers confirm as an incident's cause (`feedback.py`),",
+            "which public repositories do not have; that part is tested in `tests/test_learned_risk.py`, not measured here.",
         ]
     lines += [
         "",

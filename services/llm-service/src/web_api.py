@@ -27,10 +27,12 @@ from .domain import RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
 from .embeddings import make_embedder, tokenize
 from .failure_analysis import FailureAnalyzer
+from .feedback import FeedbackStore
 from .events import ADAPTERS, EventStore, make_event, parse_log_text
 from .flaky import detect_flaky
 from .incidents import ai_narrative, detect_incidents
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
+from .learned_risk import RiskLearning, learn
 from .pipeline import IntelligencePipeline
 from .risk_engine import RiskResult
 from .seed_data import JsonSeedDataSource, snapshot_from_json, snapshot_to_json
@@ -80,6 +82,9 @@ class AnalyzedRepository:
     source: str
     analyzed_at: str
     stages: list[dict[str, Any]] = field(default_factory=list)
+    risk_now: datetime | None = None
+    include: Callable[[str], bool] | None = None
+    learning: RiskLearning | None = None
 
 
 def sync_to_database(repository: str) -> dict[str, Any]:
@@ -142,6 +147,7 @@ class IntelligenceDemoService:
         self.repositories: dict[str, AnalyzedRepository] = {}
         self._lock = threading.Lock()
         self.events = EventStore(cache_dir / "events" if cache_dir else None)
+        self.feedback = FeedbackStore(cache_dir / "feedback" if cache_dir else None)
         self._load_demo_events()
         demo = JsonSeedDataSource(ROOT / "data" / "demo_repository.json").load_snapshot(DEMO_REPOSITORY)
         self._register(demo, "demo fixture", [], window=(START, NOW, 7))
@@ -210,7 +216,8 @@ class IntelligenceDemoService:
         incident = next((item for item in found if item.id == incident_id), None)
         if incident is None:
             raise KeyError(f"No incident {incident_id!r} in {entry.snapshot.repository}.")
-        payload = incident.to_json() | {"narrativeMode": "rules"}
+        payload = incident.to_json() | {"narrativeMode": "rules",
+                                        "feedback": self.feedback.for_incident(entry.snapshot.repository, incident_id)}
         client = groq_client_if_configured() if use_ai else None
         if client is not None:
             text = ai_narrative(incident, client)
@@ -276,10 +283,48 @@ class IntelligenceDemoService:
             f"time to restore {dora.time_to_restore_hours if dora.time_to_restore_hours is not None else 'n/a'}h"), "ms": 0})
 
         entry = AnalyzedRepository(snapshot, releases, pipeline, indexed, risks, now, start, window_days, source,
-                                   analyzed_at or datetime.now().astimezone().isoformat(timespec="seconds"), stages)
+                                   analyzed_at or datetime.now().astimezone().isoformat(timespec="seconds"), stages,
+                                   risk_now, include)
+        started = time.perf_counter()
+        self._learn(entry)
+        stages.append({"stage": "Risk learning", "detail": entry.learning.status()["message"] if entry.learning else "skipped",
+                       "ms": round((time.perf_counter() - started) * 1000)})
         with self._lock:
             self.repositories[snapshot.repository] = entry
         return entry
+
+    def _learn(self, entry: AnalyzedRepository) -> None:
+        """Fit the repository's own risk model from its history and confirmed incident causes."""
+        entry.learning = learn(entry.snapshot, entry.risk_now or entry.now, window_days=min(entry.window_days, 90),
+                               incidents=self.feedback.labels(entry.snapshot.repository), include=entry.include)
+
+    def _learned(self, entry: AnalyzedRepository, item: RiskResult) -> dict[str, Any] | None:
+        if not entry.learning:
+            return None
+        labels = self.feedback.labels(entry.snapshot.repository)
+        return entry.learning.assess(item, entry.learning.past_incidents(item.path, labels, entry.risk_now or entry.now))
+
+    def risk_model(self, repository: str | None = None) -> dict[str, Any]:
+        entry = self._get(repository)
+        status = entry.learning.status() if entry.learning else {"active": False, "message": "not trained"}
+        return {"repository": entry.snapshot.repository} | status
+
+    def record_feedback(self, repository: str | None, incident_id: str, ref: str, verdict: str,
+                        user: str = "") -> dict[str, Any]:
+        """An engineer confirms or rejects a root-cause candidate; confirmed causes retrain the risk model."""
+        entry, found = self._incidents(repository)
+        incident = next((item for item in found if item.id == incident_id), None)
+        if incident is None:
+            raise KeyError(f"No incident {incident_id!r} in {entry.snapshot.repository}.")
+        candidate = next((item for item in incident.candidates if item.ref == ref), None)
+        if candidate is None:
+            raise KeyError(f"Incident {incident_id!r} has no candidate {ref!r}.")
+        files = set(candidate.files) | {path for commit in candidate.commits for path in commit.files}
+        self.feedback.record(entry.snapshot.repository, incident_id, ref, verdict, candidate.time, files, user)
+        self._learn(entry)
+        return {"repository": entry.snapshot.repository, "incidentId": incident_id, "ref": ref, "verdict": verdict,
+                "files": sorted(files), "feedback": self.feedback.for_incident(entry.snapshot.repository, incident_id),
+                "riskModel": entry.learning.status() if entry.learning else None}
 
     def _get(self, repository: str | None) -> AnalyzedRepository:
         name = repository or DEMO_REPOSITORY
@@ -374,9 +419,11 @@ class IntelligenceDemoService:
                 {"file": item.path, "score": item.score, "reason": "; ".join(item.reasons), "level": item.level,
                  "changes": item.recent_changes, "churn": item.churn, "complexity": item.complexity_delta,
                  "hasTests": item.has_tests, "testTouchRatio": item.test_touch_ratio, "dependents": item.dependents,
-                 "dependencyChanges": item.dependency_changes, "breakdown": item.breakdown()}
+                 "dependencyChanges": item.dependency_changes, "pastFixes": item.past_fixes,
+                 "breakdown": item.breakdown(), "learned": self._learned(entry, item)}
                 for item in entry.risks[:25]
             ],
+            "riskModel": entry.learning.status() if entry.learning else None,
             "failures": [
                 {
                     "id": deployment.id,
@@ -555,6 +602,8 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._handle(lambda: self.service.overview(repository))
         elif url.path == "/api/repositories":
             self._handle(self.service.list_repositories)
+        elif url.path == "/api/risk/model":
+            self._handle(lambda: self.service.risk_model(repository))
         elif url.path == "/api/incidents":
             incident_id = parse_qs(url.query).get("id", [None])[0]
             if incident_id:
@@ -597,18 +646,25 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("Say which repository these events belong to: ?repository=owner/name")
                 return self.service.ingest_events(target, body, fmt)
             self._handle(ingest)
-        elif path in ("/api/assistant", "/api/repositories/analyze", "/api/failures/explain"):
+        elif path in ("/api/assistant", "/api/repositories/analyze", "/api/failures/explain", "/api/incidents/feedback"):
             action = {"/api/assistant": "assistant.ask", "/api/repositories/analyze": "repository.analyze",
-                      "/api/failures/explain": "failure.explain"}[path]
+                      "/api/failures/explain": "failure.explain", "/api/incidents/feedback": "incident.feedback"}[path]
             caller = self._caller("member", action)
             if caller is None:
                 return
             audit(action, *caller)
-            self._post_action(path)
+            self._post_action(path, caller[0])
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
 
-    def _post_action(self, path: str) -> None:
+    def _post_action(self, path: str, user: str = "") -> None:
+        if path == "/api/incidents/feedback":
+            def feedback() -> dict[str, Any]:
+                body = self._read_body()
+                return self.service.record_feedback(body.get("repository") or None, str(body.get("incidentId", "")),
+                                                    str(body.get("ref", "")), str(body.get("verdict", "")), user)
+            self._handle(feedback)
+            return
         if path == "/api/assistant":
             def ask() -> dict[str, Any]:
                 body = self._read_body()

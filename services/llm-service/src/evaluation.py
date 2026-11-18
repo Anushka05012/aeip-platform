@@ -29,7 +29,7 @@ from .failure_analysis import build_evidence, correlate
 from .github_source import is_dependency_file, is_source_code
 from .incidents import detect_incidents
 from .rag import RepositoryRetriever
-from .risk_engine import RiskEngine
+from .risk_engine import RiskEngine, is_bug_fix
 
 # -- metrics ---------------------------------------------------------------------------------------
 
@@ -282,10 +282,6 @@ def evaluate_incidents(count: int = 300, seed: int = 7) -> dict[str, Any]:
 
 # -- 4. change risk vs later bug fixes on real history ---------------------------------------------------
 
-FIX = re.compile(r"\b(fix(es|ed)?|bug|regression|revert|crash(es)?|broken)\b", re.IGNORECASE)
-NOT_A_CODE_FIX = re.compile(r"\b(typo|docs?|readme|changelog|spelling|ci|lint|mypy|tests?)\b", re.IGNORECASE)
-
-
 @dataclass
 class GitCommit:
     sha: str
@@ -301,17 +297,17 @@ def git_history(repo: Path) -> list[GitCommit]:
     for line in out.splitlines():
         if line.startswith("@@"):
             sha, when, subject = line[2:].split("|", 2)
-            commits.append(GitCommit(sha, datetime.fromisoformat(when).astimezone(timezone.utc), subject, []))
+            try:
+                moment = datetime.fromisoformat(when).astimezone(timezone.utc)
+            except ValueError:  # a few old commits carry corrupt time zones such as "+518:00"
+                moment = datetime.fromisoformat(when[:19]).replace(tzinfo=timezone.utc)
+            commits.append(GitCommit(sha, moment, subject, []))
         elif line.strip() and commits:
             parts = line.split("\t")
             if len(parts) == 3:
                 adds, dels, path = parts
                 commits[-1].files.append((path, int(adds) if adds.isdigit() else 0, int(dels) if dels.isdigit() else 0))
     return sorted(commits, key=lambda item: item.time)
-
-
-def is_bug_fix(subject: str) -> bool:
-    return bool(FIX.search(subject)) and not NOT_A_CODE_FIX.search(subject)
 
 
 def _snapshot_at(repo: Path, history: Sequence[GitCommit], cutoff: datetime, window: timedelta) -> RepositorySnapshot:
@@ -323,17 +319,31 @@ def _snapshot_at(repo: Path, history: Sequence[GitCommit], cutoff: datetime, win
                            tuple(path for path, _, _ in item.files if is_dependency_file(path)))
                     for item in recent)
     head = [item for item in history if item.time < cutoff][-1].sha
-    names = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", "--name-only", head], capture_output=True,
-                           text=True, check=True).stdout.split()
-    documents = []
-    for name in names:
-        if is_source_code(name) and name.endswith(".py"):
-            text = subprocess.run(["git", "-C", str(repo), "show", f"{head}:{name}"], capture_output=True, text=True,
-                                  encoding="utf-8", errors="ignore").stdout
-            documents.append(Document(name, text, "code"))
-        else:
-            documents.append(Document(name, "", "doc"))  # tests and other files: existence only
-    return RepositorySnapshot("history", commits, (), tuple(documents))
+    return RepositorySnapshot("history", commits, (), tuple(_tree_documents(repo, head)))
+
+
+def _tree_documents(repo: Path, sha: str) -> list[Document]:
+    """Files at a commit: Python source with its text (for import counts), everything else by name only.
+    Blob contents are read in one `git cat-file --batch` call."""
+    listing = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", sha], capture_output=True, check=True).stdout
+    entries = []
+    for line in listing.decode("utf-8", errors="ignore").splitlines():
+        meta, _, name = line.partition("\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == "blob":
+            entries.append((name, parts[2]))
+    wanted = [(name, blob) for name, blob in entries if is_source_code(name) and name.endswith(".py")]
+    texts: dict[str, str] = {}
+    if wanted:
+        out = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"], capture_output=True, check=True,
+                             input="".join(f"{blob}\n" for _, blob in wanted).encode()).stdout
+        position = 0
+        for name, _ in wanted:
+            header_end = out.index(b"\n", position)
+            size = int(out[position:header_end].split()[2])
+            texts[name] = out[header_end + 1:header_end + 1 + size].decode("utf-8", errors="ignore")
+            position = header_end + 1 + size + 1
+    return [Document(name, texts[name], "code") if name in texts else Document(name, "", "doc") for name, _ in entries]
 
 
 def evaluate_risk_history(repo: Path, cutoffs: int = 12, every_days: int = 120, window_days: int = 90,
@@ -374,6 +384,96 @@ def evaluate_risk_history(repo: Path, cutoffs: int = 12, every_days: int = 120, 
             "meanAucRisk": mean("aucRisk"), "meanAucChurnOnly": mean("aucChurn"), "meanAucChangeCountOnly": mean("aucChanges"),
             "meanPrecision@3": mean("precision@3"), "meanPrecision@3ChurnOnly": mean("precision@3Churn"),
             "meanBaseRate": mean("baseRate"), "rows": rows}
+
+
+# -- 5. learned per-repository risk vs fixed weights (temporal, no future data) ----------------------------
+
+def recall_at_fraction(scores: Sequence[float], labels: Sequence[bool], fraction: float) -> float | None:
+    """Share of the buggy files caught when reviewers check only the riskiest `fraction` of files
+    (the gating metric of Meta's Diff Risk Score paper)."""
+    total = sum(labels)
+    if not total:
+        return None
+    flagged = max(1, round(len(scores) * fraction))
+    order = sorted(range(len(scores)), key=lambda index: scores[index], reverse=True)[:flagged]
+    return sum(labels[index] for index in order) / total
+
+
+def evaluate_learned_risk(repo: Path, every_days: int = 60, window_days: int = 90, horizon_days: int = 90,
+                          limit: int = 40) -> dict[str, Any]:
+    """At each past date T (oldest first): fit the model on dates whose horizon ended by T, then rank the
+    files changed before T and check them against bug fixes in the horizon after T."""
+    from .learned_risk import FEATURES, TrainingRow, features, fit
+    unanchored = [name for name in FEATURES if name != "fixedScore"]
+
+    history = git_history(repo)
+    latest = history[-1].time - timedelta(days=horizon_days)
+    window, horizon = timedelta(days=window_days), timedelta(days=horizon_days)
+    engine = RiskEngine()
+    dated: list[tuple[datetime, list[TrainingRow], list[int]]] = []
+    cutoff = latest
+    while cutoff - window > history[0].time and len(dated) < limit:
+        snapshot = _snapshot_at(repo, history, cutoff, window)
+        risks = engine.score_files(snapshot, cutoff, window_days, is_source_code)
+        fixed = {path for item in history if cutoff <= item.time < cutoff + horizon and is_bug_fix(item.subject)
+                 for path, _, _ in item.files}
+        rows = [TrainingRow(risk.path, cutoff, features(risk), risk.path in fixed, "bug fix" if risk.path in fixed else "")
+                for risk in risks]
+        dated.append((cutoff, rows, [risk.score for risk in risks]))
+        cutoff -= timedelta(days=every_days)
+    dated.reverse()
+
+    evaluations = []
+    for index, (cutoff, rows, fixed_scores) in enumerate(dated):
+        labels = [row.label for row in rows]
+        if len(rows) < 4 or not any(labels) or all(labels):
+            continue
+        training = [row for earlier, earlier_rows, _ in dated[:index] if earlier + horizon <= cutoff for row in earlier_rows]
+        model = fit(training)
+        plain = fit(training, l2=1.0, names=unanchored)  # the first, unanchored design (kept for the report)
+        scores = {
+            "fixed": [float(score) for score in fixed_scores],
+            "changes": [row.x["changes"] for row in rows],
+            "pastFixes": [row.x["pastFixes"] + row.x["changes"] / 100 for row in rows],  # ties broken by changes
+        }
+        if model:
+            scores["learned"] = [model.probability(row.x) for row in rows]
+        if plain:
+            scores["learnedUnanchored"] = [plain.probability(row.x) for row in rows]
+        evaluations.append({
+            "cutoff": cutoff.date().isoformat(), "files": len(rows), "buggy": sum(labels),
+            "trainingPositives": sum(row.label for row in training),
+            "auc": {name: roc_auc(values, labels) for name, values in scores.items()},
+            "recall@20%": {name: recall_at_fraction(values, labels, 0.2) for name, values in scores.items()},
+        })
+
+    def mean_over(rows: list[dict[str, Any]], metric: str, name: str) -> float | None:
+        values = [row[metric][name] for row in rows if row[metric].get(name) is not None]
+        return round(sum(values) / len(values), 3) if values else None
+
+    learned_rows = [row for row in evaluations if "learned" in row["auc"]]
+    methods = ("learned", "learnedUnanchored", "fixed", "changes", "pastFixes")
+    # Cold start: how the advantage over fixed weights grows with the labels available for training.
+    buckets = [(10, 49), (50, 149), (150, 499), (500, 10**9)]
+    cold_start = []
+    for low, high in buckets:
+        in_bucket = [row for row in learned_rows if low <= row["trainingPositives"] <= high]
+        if in_bucket:
+            cold_start.append({"positives": f"{low}-{high}" if high < 10**9 else f"{low}+", "dates": len(in_bucket),
+                               "aucLearned": mean_over(in_bucket, "auc", "learned"),
+                               "aucUnanchored": mean_over(in_bucket, "auc", "learnedUnanchored"),
+                               "aucFixed": mean_over(in_bucket, "auc", "fixed")})
+    final_model = fit([row for _, rows, _ in dated for row in rows])
+    return {
+        "datesEvaluated": len(learned_rows), "datesTotal": len(evaluations), "everyDays": every_days,
+        "windowDays": window_days, "horizonDays": horizon_days,
+        "auc": {name: mean_over(learned_rows, "auc", name) for name in methods},
+        "recall@20%": {name: mean_over(learned_rows, "recall@20%", name) for name in methods},
+        "learnedWins": sum(1 for row in learned_rows if row["auc"]["learned"] > row["auc"]["fixed"]),
+        "coldStart": cold_start,
+        "weights": final_model.to_json()["weights"] if final_model else None,
+        "rows": evaluations,
+    }
 
 
 def load_json(path: Path) -> Any:

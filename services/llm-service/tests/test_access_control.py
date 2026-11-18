@@ -55,6 +55,14 @@ def test_service_token_and_roles_are_enforced(monkeypatch, tmp_path):
         incident_id = call(f"{base}/api/incidents", headers=dashboard("viewer"))[1]["incidents"][0]["id"]
         assert call(f"{base}/api/incidents?id={incident_id}&ai=1", headers=dashboard("viewer"))[0] == 403
         assert call(f"{base}/api/incidents?id={incident_id}", headers=dashboard("viewer"))[0] == 200
+
+        ref = call(f"{base}/api/incidents?id={incident_id}", headers=dashboard("viewer"))[1]["candidates"][0]["ref"]
+        verdict = {"incidentId": incident_id, "ref": ref, "verdict": "confirmed"}
+        assert call(f"{base}/api/incidents/feedback", "POST", verdict, dashboard("viewer"))[0] == 403
+        status, body = call(f"{base}/api/incidents/feedback", "POST", verdict, dashboard("member"))
+        assert status == 200 and body["feedback"] == {ref: "confirmed"}
+        assert call(f"{base}/api/incidents/feedback", "POST", {**verdict, "verdict": "maybe"}, dashboard("member"))[0] == 400
+        assert call(f"{base}/api/risk/model", headers=dashboard("viewer"))[1]["needed"] == 50
     finally:
         server.shutdown()
 
@@ -63,3 +71,4 @@ def test_service_token_and_roles_are_enforced(monkeypatch, tmp_path):
                for r in records)
     assert any(r["action"] == "assistant.ask" and not r["allowed"] and r["role"] == "viewer" for r in records)
     assert any(r["action"] == "incident.ai-summary" and not r["allowed"] for r in records)
+    assert any(r["action"] == "incident.feedback" and r["allowed"] and r["role"] == "member" for r in records)

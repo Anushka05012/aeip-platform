@@ -10,6 +10,9 @@ Six signals, each capped before weighting so the score stays 0-100 and every poi
 | test gap            | 15  | no matching test file, or changes that did not touch any test      |
 | blast radius        | 10  | how many other files import this one                               |
 | dependency churn    |  5  | changed in the same commit as a dependency manifest/lockfile       |
+
+Past bug fixes in the window are recorded too (`past_fixes`). They are not part of this fixed score, so
+its numbers stay comparable over time; the learned model (learned_risk.py) uses them.
 """
 
 from __future__ import annotations
@@ -26,7 +29,15 @@ from .domain import RepositorySnapshot
 _TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
 _TEST_NAME = re.compile(r"^test_.+|.+_test\.\w+$|.+\.(test|spec)\.\w+$|.+Tests?\.\w+$")
 _GENERIC_STEMS = {"index", "main", "init", "__init__", "mod", "lib", "app"}
+_FIX = re.compile(r"\b(fix(es|ed)?|bug|regression|revert|crash(es)?|broken)\b", re.IGNORECASE)
+_NOT_A_CODE_FIX = re.compile(r"\b(typo|docs?|readme|changelog|spelling|ci|lint|mypy|tests?)\b", re.IGNORECASE)
 _NOT_TESTABLE = {".md", ".mdx", ".txt", ".rst", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".sql", ".sh"}
+
+
+def is_bug_fix(message: str) -> bool:
+    """A commit that fixes a bug in code (not docs, typos, CI or tests), judged from its first line."""
+    subject = message.splitlines()[0] if message else ""
+    return bool(_FIX.search(subject)) and not _NOT_A_CODE_FIX.search(subject)
 
 
 def is_testable(path: str) -> bool:
@@ -68,6 +79,7 @@ class RiskResult:
     dependents: int = 0  # other files that import this one
     dependency_changes: int = 0  # changes made together with a dependency update
     testable: bool = True  # docs/config have no test-gap signal
+    past_fixes: int = 0  # bug-fix commits that touched this file in the window
 
     def breakdown(self) -> dict[str, int]:
         """Points per signal, for the UI."""
@@ -141,6 +153,7 @@ class RiskEngine:
             with_tests = sum(1 for commit in touching if any(is_test_path(item) for item in commit.files))
             touch_ratio = round(with_tests / len(touching), 2) if touching else 0.0
             dependency_changes = sum(1 for commit in touching if commit.dependency_files)
+            past_fixes = sum(1 for commit in touching if is_bug_fix(commit.message))
             result = RiskResult(path, 0, "low", changes, churn, complexity, (), has_tests, touch_ratio,
                                 dependents.get(path, 0), dependency_changes, is_testable(path))
             score = sum(result.breakdown().values())
@@ -158,6 +171,8 @@ class RiskEngine:
             if dependency_changes:
                 reasons.append(f"changed alongside a dependency update {dependency_changes} time"
                                f"{'s' if dependency_changes != 1 else ''}")
+            if past_fixes:
+                reasons.append(f"{past_fixes} bug fix{'es' if past_fixes != 1 else ''} in the last {window_days} days")
             results.append(RiskResult(path, score, level, changes, churn, complexity, tuple(reasons), has_tests,
-                                      touch_ratio, result.dependents, dependency_changes, result.testable))
+                                      touch_ratio, result.dependents, dependency_changes, result.testable, past_fixes))
         return sorted(results, key=lambda result: result.score, reverse=True)
