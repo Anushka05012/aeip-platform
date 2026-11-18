@@ -5,6 +5,11 @@ export type DeployPoint = { d: string; v: number };
 export type RiskItem = {
   file: string; score: number; reason: string;
   level?: string; changes?: number; churn?: number; complexity?: number;
+  hasTests?: boolean; testTouchRatio?: number; dependents?: number; dependencyChanges?: number;
+  breakdown?: RiskBreakdown;
+};
+export type RiskBreakdown = {
+  frequency: number; churn: number; complexity: number; testGap: number; blastRadius: number; dependencies: number;
 };
 export type Failure = {
   id: string; commit: string; workflow: string; event: string;

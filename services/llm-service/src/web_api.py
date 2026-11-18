@@ -154,11 +154,9 @@ class IntelligenceDemoService:
             item for item in snapshot.deployments
             if (not snapshot.default_branch or item.branch == snapshot.default_branch)
             and item.event in ("", "push")))
-        risk_snapshot = snapshot
+        include = None
         if window is None:
-            risk_snapshot = replace(snapshot, commits=tuple(
-                replace(item, files=tuple(path for path in item.files if is_source_code(path)))
-                for item in snapshot.commits))
+            include = is_source_code  # live repositories: score production code only
             # Analyse "as of" the latest activity so quiet repositories still show data, and
             # widen the risk window to cover every fetched commit.
             commit_times = [item.authored_at for item in snapshot.commits]
@@ -173,7 +171,7 @@ class IntelligenceDemoService:
             risk_now = now
 
         started = time.perf_counter()
-        risks = pipeline.risk_engine.score_files(risk_snapshot, risk_now, window_days)
+        risks = pipeline.risk_engine.score_files(snapshot, risk_now, window_days, include)
         top = f"; highest {risks[0].path} ({risks[0].score}/100)" if risks else ""
         stages.append({"stage": "Risk scoring", "detail": f"{len(risks)} files scored over {window_days} days{top}",
                        "ms": round((time.perf_counter() - started) * 1000)})
@@ -280,7 +278,9 @@ class IntelligenceDemoService:
             "deployTrend": [{"d": day, "v": count} for day, count in deployments_by_day.items()],
             "riskItems": [
                 {"file": item.path, "score": item.score, "reason": "; ".join(item.reasons), "level": item.level,
-                 "changes": item.recent_changes, "churn": item.churn, "complexity": item.complexity_delta}
+                 "changes": item.recent_changes, "churn": item.churn, "complexity": item.complexity_delta,
+                 "hasTests": item.has_tests, "testTouchRatio": item.test_touch_ratio, "dependents": item.dependents,
+                 "dependencyChanges": item.dependency_changes, "breakdown": item.breakdown()}
                 for item in entry.risks[:25]
             ],
             "failures": [
