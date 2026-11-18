@@ -1,12 +1,32 @@
 # AEIP: AI Engineering Intelligence Platform
 
-Software engineering analytics and CI/CD failure intelligence. Point AEIP at a GitHub
-repository and it pulls the commits, pull requests, CI runs and source code, then shows:
+**The problem.** When production breaks, the first question is always *"what changed?"*, and the
+answer is spread across five tools: the repository, CI, the deploy platform, application logs and
+the database. Engineers switch between dashboards and line up timestamps by hand while the
+incident runs, and CI failures that were never caused by the code (flaky tests, outages, rate
+limits) still send people digging through their own commits.
 
-- **Delivery health**: DORA metrics (deployment frequency, lead time, change failure rate, time to restore)
-- **Change risk**: which files are most likely to break, and why (churn, complexity, test gaps, blast radius, dependency updates)
-- **CI failure explanations**: was a failed build caused by its commit, with evidence and confidence
-- **Ask the codebase**: plain-English questions answered from the repository, with sources
+**What AEIP does.** It connects those tools and answers with evidence:
+
+- **Incidents across tools**: deploys, app errors, database events and alerts are grouped into
+  incidents on one timeline, and every change that went live before it (a deploy and the exact
+  commits it shipped, a migration, a flag change) is ranked as the likely cause, with the
+  evidence shown. On 300 test incidents it names the right change first 84% of the time, against
+  63% for "blame the most recent change" ([evaluation](docs/EVALUATION.md)).
+- **CI failure explanations**: was a failed build caused by its commit, or by flakiness or
+  infrastructure? A verdict with confidence, evidence and next steps; flaky workflows are detected.
+- **Change risk**: which files are most likely to break, and why (change frequency, churn,
+  complexity, test gaps, blast radius, dependency updates).
+- **Delivery health**: all four DORA metrics.
+- **Ask the codebase**: plain-English questions answered from the code, docs and history, with
+  sources, using a local embedding model (code never leaves your infrastructure).
+
+It is explainable by design: every score is a sum of visible signals, the LLM only rewrites
+evidence the rules found, and nothing is changed automatically. Sign-in with roles, an audit
+log and secret redaction are built in.
+
+Sources it connects: GitHub (commits, PRs, Actions, deployments), Vercel, Render, Sentry,
+Prometheus Alertmanager, and any application or database log (plain text or JSON lines).
 
 ## Run it with Docker (one command)
 
@@ -124,11 +144,12 @@ rejects calls without it and re-checks the role. Actions are recorded in
 
 | Folder | What it is |
 |---|---|
-| `services/llm-service/` | Python intelligence service: GitHub fetch, RAG, risk, DORA, failure analysis, REST API |
-| `frontend/` | Next.js dashboard |
+| `services/llm-service/` | Python intelligence service: GitHub fetch, event ingestion, incidents, failure analysis, risk, DORA, retrieval, evaluation, REST API |
+| `frontend/` | Next.js dashboard, GitHub sign-in and the authenticated API proxy |
 | `ingestion/` | Express service: webhooks and PostgreSQL storage (Prisma) |
 | `prisma/` | Database schema and migrations |
 | `demo/` | Generator for the PayFlow demo repository |
-| `docs/` | Project documents (sprint plan, quality and SDG evidence) |
+| `docs/` | Evaluation, deployment guide, sprint plan, quality and SDG evidence |
+| `docker-compose.yml`, `render.yaml` | One-command local stack; Render blueprint |
 
 More detail on the intelligence service: [services/llm-service/README.md](services/llm-service/README.md).
