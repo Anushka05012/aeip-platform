@@ -97,7 +97,7 @@ class LearnedRiskModel:
         return sorted(parts, key=lambda item: abs(item[1]), reverse=True)
 
     def explain(self, x: dict[str, float], top: int = 3) -> list[str]:
-        return [f"{LABELS[name]} {'raise' if value > 0 else 'lower'} the risk"
+        return [f"{LABELS[name]}: {'raises' if value > 0 else 'lowers'} the risk"
                 for name, value in self.contributions(x)[:top] if abs(value) >= 0.1]
 
     def to_json(self) -> dict[str, Any]:
@@ -209,7 +209,7 @@ def rows_at(snapshot: RepositorySnapshot, cutoff: datetime, window_days: int, ho
 
 
 def training_cutoffs(commits: Iterable[Commit], now: datetime, horizon_days: int, every_days: int,
-                     limit: int = 24) -> list[datetime]:
+                     limit: int = 40) -> list[datetime]:
     """Past moments whose horizon ended before `now`, newest first, back to the first commit."""
     first = min((commit.authored_at for commit in commits), default=now)
     cutoffs = []
@@ -228,6 +228,9 @@ class RiskLearning:
     positives: int
     incident_labels: int
     window_days: int
+    current: dict[str, RiskResult] = field(default_factory=dict)  # today's signals, from the same history
+    history_commits: int = 0
+    history_source: str = ""
 
     @property
     def active(self) -> bool:
@@ -238,10 +241,11 @@ class RiskLearning:
         return sum(1 for label in incidents if as_utc(start) <= as_utc(label.at) < as_utc(now) and path in label.files)
 
     def assess(self, result: RiskResult, past_incidents: int = 0) -> dict[str, Any] | None:
-        """Probability and the signals behind it, when the model is active."""
+        """Probability and the signals behind it, when the model is active. The file's signals are taken
+        from the history the model was trained on (same window), falling back to `result`."""
         if not self.active or self.model is None:
             return None
-        x = features(result, past_incidents)
+        x = features(self.current.get(result.path, result), past_incidents)
         return {"probability": round(self.model.probability(x), 3), "drivers": self.model.explain(x)}
 
     def status(self, saved_causes: int = 0) -> dict[str, Any]:
@@ -260,20 +264,24 @@ class RiskLearning:
             "active": self.active, "labels": self.positives, "incidentLabels": self.incident_labels,
             "bugFixLabels": self.positives - self.incident_labels, "examples": self.rows,
             "needed": USE_FROM_POSITIVES, "savedCauses": saved_causes, "message": message,
+            "historyCommits": self.history_commits, "historySource": self.history_source,
             "weights": [{"signal": LABELS[name], "weight": round(value, 3)}
                         for name, value in sorted(weights.items(), key=lambda item: -abs(item[1]))],
         }
 
 
-def learn(snapshot: RepositorySnapshot, now: datetime, window_days: int = 90, horizon_days: int = 60,
-          every_days: int = 30, incidents: Sequence[IncidentLabel] = (),
-          include: Callable[[str], bool] | None = None) -> RiskLearning:
-    """Train on the repository's own history (no data after `now - horizon`)."""
+def learn(snapshot: RepositorySnapshot, now: datetime, window_days: int = 90, horizon_days: int = 90,
+          every_days: int = 60, incidents: Sequence[IncidentLabel] = (),
+          include: Callable[[str], bool] | None = None, history_source: str = "") -> RiskLearning:
+    """Train on the repository's own history (no data after `now - horizon`). The defaults are the
+    settings measured in docs/EVALUATION.md, section 6."""
     engine = RiskEngine()
     rows = [row for cutoff in training_cutoffs(snapshot.commits, now, horizon_days, every_days)
             for row in rows_at(snapshot, cutoff, window_days, horizon_days, incidents, include, engine)]
     model = fit(rows)
     if model:
         model.trained_at = now.isoformat()
+    current = {result.path: result for result in engine.score_files(snapshot, now, window_days, include)}
     return RiskLearning(model, len(rows), sum(row.label for row in rows),
-                        sum(1 for row in rows if row.source == "incident"), window_days)
+                        sum(1 for row in rows if row.source == "incident"), window_days, current,
+                        len(snapshot.commits), history_source)

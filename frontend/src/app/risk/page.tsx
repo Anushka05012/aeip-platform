@@ -24,6 +24,9 @@ export default function RiskPage() {
       {data.riskModel && <Panel title="Learned from this repository"
         aside={data.riskModel.active ? <Badge tone="good">in use</Badge> : <Badge tone="neutral">learning</Badge>}>
         <p className="text-[13.5px] text-ink-2">{data.riskModel.message}.</p>
+        {!!data.riskModel.historyCommits && <p className="mt-1 text-[12px] text-muted">
+          Trained on {data.riskModel.historyCommits.toLocaleString("en-IN")} commits ({data.riskModel.historySource}).
+        </p>}
         <p className="mt-1 text-[12px] text-muted">
           Labels are files that needed a bug fix soon after changing ({data.riskModel.bugFixLabels}) and files in changes
           confirmed as an incident&apos;s cause on the Incidents page ({data.riskModel.incidentLabels}).

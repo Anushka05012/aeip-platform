@@ -23,7 +23,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from .assistant import RepositoryAssistant
-from .domain import RepositorySnapshot
+from .domain import Commit, RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
 from .embeddings import make_embedder, tokenize
 from .failure_analysis import FailureAnalyzer
@@ -32,6 +32,7 @@ from .events import ADAPTERS, EventStore, make_event, parse_log_text
 from .flaky import detect_flaky
 from .incidents import ai_narrative, detect_incidents
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
+from .git_history import HISTORY_YEARS, HistoryError, load_history
 from .learned_risk import RiskLearning, learn
 from .pipeline import IntelligencePipeline
 from .risk_engine import RiskResult
@@ -85,6 +86,8 @@ class AnalyzedRepository:
     risk_now: datetime | None = None
     include: Callable[[str], bool] | None = None
     learning: RiskLearning | None = None
+    history: tuple[Commit, ...] = ()  # full recent history from git, for learning
+    history_source: str = ""
 
 
 def sync_to_database(repository: str) -> dict[str, Any]:
@@ -118,6 +121,16 @@ def _restore_delta(dora: DoraMetrics) -> str:
     return text + (f" · {dora.open_incidents} still failing" if dora.open_incidents else "")
 
 
+def git_history_loader(cache_dir: Path | None) -> Callable[[str, bool], list[Commit]] | None:
+    """Reads a repository's recent history through a bare git copy kept under the cache directory."""
+    if cache_dir is None:
+        return None
+
+    def load(repository: str, refresh: bool) -> list[Commit]:
+        return load_history(repository, cache_dir / "history", os.getenv("GITHUB_TOKEN") or None, refresh)
+    return load
+
+
 def groq_client_if_configured():
     """Return a Groq client when a real key is configured, else None (offline mode)."""
     try:
@@ -137,8 +150,10 @@ class IntelligenceDemoService:
 
     def __init__(self, cache_dir: Path | None = CACHE_DIR,
                  github_factory: Callable[[], GitHubDataSource] = GitHubDataSource,
-                 database_sync: Callable[[str], dict[str, Any]] | None = sync_to_database) -> None:
+                 database_sync: Callable[[str], dict[str, Any]] | None = sync_to_database,
+                 history_loader: Callable[[str, bool], list[Commit]] | None | str = "git") -> None:
         self.cache_dir = cache_dir
+        self.history_loader = git_history_loader(cache_dir) if history_loader == "git" else history_loader
         self.github_factory = github_factory
         self.database_sync = database_sync
         self.embedder, self.embedder_note = make_embedder(cache_dir)
@@ -232,12 +247,12 @@ class IntelligenceDemoService:
         for path in sorted(self.cache_dir.glob("*.json")):
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                self._register(snapshot_from_json(raw), "GitHub (cached)", raw.get("stages", []),
+                self._register(snapshot_from_json(raw), "GitHub (cached)", raw.get("stages", []), refresh_history=False,
                                analyzed_at=raw.get("analyzedAt"))
             except Exception as exc:  # a corrupt cache file must not stop the service
                 print(f"[intelligence-api] skipped cache {path.name}: {exc}")
 
-    def _register(self, snapshot: RepositorySnapshot, source: str, stages: list[dict[str, Any]],
+    def _register(self, snapshot: RepositorySnapshot, source: str, stages: list[dict[str, Any]], refresh_history: bool = True,
                   window: tuple[datetime, datetime, int] | None = None,
                   analyzed_at: str | None = None) -> AnalyzedRepository:
         stages = list(stages)
@@ -285,6 +300,17 @@ class IntelligenceDemoService:
         entry = AnalyzedRepository(snapshot, releases, pipeline, indexed, risks, now, start, window_days, source,
                                    analyzed_at or datetime.now().astimezone().isoformat(timespec="seconds"), stages,
                                    risk_now, include)
+        if window is None and self.history_loader:  # live repositories: learn from the full recent history
+            started = time.perf_counter()
+            try:
+                entry.history = tuple(self.history_loader(snapshot.repository, refresh_history))
+                entry.history_source = "git history"
+                detail = (f"{len(entry.history)} commits from the last {HISTORY_YEARS} years "
+                          "(bare read-only git copy)")
+            except HistoryError as exc:
+                entry.history_source = "GitHub API (recent commits only)"
+                detail = f"skipped: {exc}; learning from the {len(snapshot.commits)} commits fetched through the API"
+            stages.append({"stage": "Git history", "detail": detail, "ms": round((time.perf_counter() - started) * 1000)})
         started = time.perf_counter()
         self._learn(entry)
         stages.append({"stage": "Risk learning", "detail": self._risk_status(entry)["message"],
@@ -295,8 +321,13 @@ class IntelligenceDemoService:
 
     def _learn(self, entry: AnalyzedRepository) -> None:
         """Fit the repository's own risk model from its history and confirmed incident causes."""
-        entry.learning = learn(entry.snapshot, entry.risk_now or entry.now, window_days=min(entry.window_days, 90),
-                               incidents=self.feedback.labels(entry.snapshot.repository), include=entry.include)
+        commits = entry.history or entry.snapshot.commits
+        history = RepositorySnapshot(entry.snapshot.repository, tuple(commits), (), entry.snapshot.documents)
+        now = max([entry.risk_now or entry.now] + [commit.authored_at for commit in entry.history[-1:]])
+        entry.learning = learn(history, now, incidents=self.feedback.labels(entry.snapshot.repository),
+                               include=entry.include,
+                               history_source=entry.history_source or ("demo fixture" if entry.source == "demo fixture"
+                                                                       else "GitHub API (recent commits only)"))
 
     def _risk_status(self, entry: AnalyzedRepository) -> dict[str, Any]:
         saved = len(self.feedback.labels(entry.snapshot.repository))

@@ -26,7 +26,9 @@ from .domain import Commit, Deployment, Document, RepositorySnapshot
 from .embeddings import EmbeddingWorker, InMemoryVectorStore
 from .events import OpsEvent, make_event
 from .failure_analysis import build_evidence, correlate
-from .github_source import is_dependency_file, is_source_code
+from .git_history import GitCommit, to_commit
+from .git_history import read_history as git_history
+from .github_source import is_source_code
 from .incidents import detect_incidents
 from .rag import RepositoryRetriever
 from .risk_engine import RiskEngine, is_bug_fix
@@ -282,42 +284,8 @@ def evaluate_incidents(count: int = 300, seed: int = 7) -> dict[str, Any]:
 
 # -- 4. change risk vs later bug fixes on real history ---------------------------------------------------
 
-@dataclass
-class GitCommit:
-    sha: str
-    time: datetime
-    subject: str
-    files: list[tuple[str, int, int]]
-
-
-def git_history(repo: Path) -> list[GitCommit]:
-    out = subprocess.run(["git", "-C", str(repo), "log", "--no-merges", "--numstat", "--format=@@%H|%aI|%s"],
-                         capture_output=True, text=True, encoding="utf-8", errors="ignore", check=True).stdout
-    commits: list[GitCommit] = []
-    for line in out.splitlines():
-        if line.startswith("@@"):
-            sha, when, subject = line[2:].split("|", 2)
-            try:
-                moment = datetime.fromisoformat(when).astimezone(timezone.utc)
-            except ValueError:  # a few old commits carry corrupt time zones such as "+518:00"
-                moment = datetime.fromisoformat(when[:19]).replace(tzinfo=timezone.utc)
-            commits.append(GitCommit(sha, moment, subject, []))
-        elif line.strip() and commits:
-            parts = line.split("\t")
-            if len(parts) == 3:
-                adds, dels, path = parts
-                commits[-1].files.append((path, int(adds) if adds.isdigit() else 0, int(dels) if dels.isdigit() else 0))
-    return sorted(commits, key=lambda item: item.time)
-
-
 def _snapshot_at(repo: Path, history: Sequence[GitCommit], cutoff: datetime, window: timedelta) -> RepositorySnapshot:
-    recent = [item for item in history if cutoff - window <= item.time < cutoff]
-    commits = tuple(Commit(item.sha, item.time,
-                           tuple(path for path, _, _ in item.files if not is_dependency_file(path)),
-                           sum(adds for path, adds, _ in item.files if is_source_code(path)),
-                           sum(dels for path, _, dels in item.files if is_source_code(path)), 0, item.subject,
-                           tuple(path for path, _, _ in item.files if is_dependency_file(path)))
-                    for item in recent)
+    commits = tuple(to_commit(item) for item in history if cutoff - window <= item.time < cutoff)
     head = [item for item in history if item.time < cutoff][-1].sha
     return RepositorySnapshot("history", commits, (), tuple(_tree_documents(repo, head)))
 

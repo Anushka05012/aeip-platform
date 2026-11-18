@@ -15,6 +15,7 @@ export type RiskItem = {
 export type RiskModel = {
   active: boolean; labels: number; incidentLabels: number; bugFixLabels: number; examples: number;
   needed: number; message: string; weights: { signal: string; weight: number }[];
+  savedCauses?: number; historyCommits?: number; historySource?: string;
 };
 export type CauseVerdict = "confirmed" | "rejected";
 export type RiskBreakdown = {

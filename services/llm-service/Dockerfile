@@ -6,6 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     AEIP_HOST=0.0.0.0 PORT=8001 HF_HOME=/app/models
 WORKDIR /app
 
+# git reads each repository's history (a bare, read-only copy) for the learned risk model.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 10001 aeip
 COPY requirements.txt .
 RUN pip install -r requirements.txt
