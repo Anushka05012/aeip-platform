@@ -14,6 +14,7 @@ const sections = [
     {
         heading: "Investigate",
         items: [
+            { label: "Incidents", href: "/incidents" },
             { label: "Change risk", href: "/risk" },
             { label: "CI failures", href: "/failures" },
             { label: "Ask the codebase", href: "/assistant" },

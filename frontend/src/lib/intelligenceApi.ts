@@ -1,4 +1,4 @@
-import { AssistantAnswer, FailureExplanation, IntelligenceOverview, RepositorySummary } from "@/types";
+import { AssistantAnswer, FailureExplanation, IncidentDetail, IncidentSummary, IntelligenceOverview, RepositorySummary } from "@/types";
 
 const baseUrl = process.env.NEXT_PUBLIC_INTELLIGENCE_API_URL ?? "http://localhost:8001";
 const ACTIVE_KEY = "aeip.activeRepository";
@@ -69,4 +69,16 @@ export function askAssistant(question: string, repository = getActiveRepository(
     method: "POST",
     body: JSON.stringify({ question, repository: repository || undefined }),
   });
+}
+
+export function listIncidents(repository = getActiveRepository()): Promise<{
+  repository: string; eventsBySource: Record<string, number>; incidents: IncidentSummary[];
+}> {
+  const query = repository ? `?repository=${encodeURIComponent(repository)}` : "";
+  return request(`/api/incidents${query}`);
+}
+
+export function getIncident(id: string, useAi = false, repository = getActiveRepository()): Promise<IncidentDetail> {
+  const params = new URLSearchParams({ id, ...(repository ? { repository } : {}), ...(useAi ? { ai: "1" } : {}) });
+  return request<IncidentDetail>(`/api/incidents?${params}`);
 }

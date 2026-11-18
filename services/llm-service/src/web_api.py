@@ -29,6 +29,7 @@ from .embeddings import tokenize
 from .failure_analysis import FailureAnalyzer
 from .events import ADAPTERS, EventStore, make_event, parse_log_text
 from .flaky import detect_flaky
+from .incidents import ai_narrative, detect_incidents
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
 from .pipeline import IntelligencePipeline
 from .risk_engine import RiskResult
@@ -176,6 +177,30 @@ class IntelligenceDemoService:
             counts[item.source] = counts.get(item.source, 0) + 1
         return {"repository": name, "total": len(events), "bySource": counts,
                 "events": [item.to_json() for item in events[-max(1, min(limit, 5000)):]]}
+
+    # -- incidents across tools -------------------------------------------------
+    def _incidents(self, repository: str | None):
+        entry = self._get(repository)
+        return entry, detect_incidents(entry.snapshot, self.events.list(entry.snapshot.repository), entry.risks)
+
+    def incidents(self, repository: str | None = None) -> dict[str, Any]:
+        entry, found = self._incidents(repository)
+        counts = self.list_events(entry.snapshot.repository, limit=1)["bySource"]
+        return {"repository": entry.snapshot.repository, "eventsBySource": counts,
+                "incidents": [item.summary() for item in found]}
+
+    def incident(self, incident_id: str, repository: str | None = None, use_ai: bool = False) -> dict[str, Any]:
+        entry, found = self._incidents(repository)
+        incident = next((item for item in found if item.id == incident_id), None)
+        if incident is None:
+            raise KeyError(f"No incident {incident_id!r} in {entry.snapshot.repository}.")
+        payload = incident.to_json() | {"narrativeMode": "rules"}
+        client = groq_client_if_configured() if use_ai else None
+        if client is not None:
+            text = ai_narrative(incident, client)
+            if text:
+                payload |= {"narrative": text, "narrativeMode": "groq"}
+        return payload
 
     # -- repository registry ---------------------------------------------------
     def _load_cache(self) -> None:
@@ -352,6 +377,8 @@ class IntelligenceDemoService:
                 if deployment.status == "failure"
             ][:25],
             "flaky": [item.to_json() for item in flaky if item.level != "stable"],
+            "incidents": [item.summary() for item in detect_incidents(snapshot, self.events.list(snapshot.repository),
+                                                                      entry.risks)][:5],
             "summary": summary,
             "windowDays": entry.window_days,
             "evidence": [{"path": item.path, "score": item.score} for item in evidence],
@@ -485,6 +512,13 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._handle(lambda: self.service.overview(repository))
         elif url.path == "/api/repositories":
             self._handle(self.service.list_repositories)
+        elif url.path == "/api/incidents":
+            incident_id = parse_qs(url.query).get("id", [None])[0]
+            if incident_id:
+                use_ai = parse_qs(url.query).get("ai", ["0"])[0] == "1"
+                self._handle(lambda: self.service.incident(incident_id, repository, use_ai))
+            else:
+                self._handle(lambda: self.service.incidents(repository))
         elif url.path == "/api/events":
             query = parse_qs(url.query)
             self._handle(lambda: self.service.list_events(repository, query.get("source", [None])[0],
