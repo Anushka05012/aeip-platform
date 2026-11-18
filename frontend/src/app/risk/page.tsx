@@ -32,6 +32,22 @@ export default function RiskPage() {
           confirmed as an incident&apos;s cause on the Incidents page ({data.riskModel.incidentLabels}).
           {!data.riskModel.active && ` The learned ranking is used from ${data.riskModel.needed} labels: below that it was not reliably better than the fixed score on eight real repositories.`}
         </p>
+        {!!data.riskModel.trackRecord?.length && <div className="mt-3">
+          <p className="text-[12px] font-medium text-muted">
+            Track record: {data.riskModel.backtestPredictions} past predictions replayed, each made only with what was known at the time
+          </p>
+          <table className="mt-1 text-[12.5px] border-collapse">
+            <thead><tr className="text-muted text-left">
+              <th className="pr-6 font-normal">AEIP said</th><th className="pr-6 font-normal text-right">files</th>
+              <th className="font-normal text-right">actually broke</th>
+            </tr></thead>
+            <tbody>{data.riskModel.trackRecord.map((band) => <tr key={band.label}>
+              <td className="pr-6 text-ink-2">{band.label}</td>
+              <td className="pr-6 text-right font-mono">{band.n}</td>
+              <td className="text-right font-mono">{Math.round(band.observed * 100)}%</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
         {data.riskModel.active && !!data.riskModel.weights.length && <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
           {data.riskModel.weights.slice(0, 6).map((item) => <li key={item.signal}>
             {item.signal} <span className={`font-mono ${item.weight > 0 ? "text-bad" : "text-good"}`}>{item.weight > 0 ? "+" : ""}{item.weight.toFixed(2)}</span>

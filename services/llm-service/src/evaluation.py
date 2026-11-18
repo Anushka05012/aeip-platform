@@ -282,6 +282,44 @@ def evaluate_incidents(count: int = 300, seed: int = 7) -> dict[str, Any]:
             "seed": seed}
 
 
+def evaluate_incident_calibration(count: int = 300, fit_seed: int = 7, test_seed: int = 8) -> dict[str, Any]:
+    """Are the evidence labels and scores of the top suggestion calibrated? Fit on one generated set, test
+    on another. Only meaningful for incidents that do have a change as their cause (the generator's case)."""
+    from .calibration import IsotonicCalibrator, brier_score, expected_calibration_error, reliability
+    from .incidents import confidence_label
+
+    def top_suggestions(seed: int) -> list[tuple[float, bool]]:
+        rng = random.Random(seed)
+        out = []
+        for index in range(count):
+            scenario = generate_scenario(rng, index)
+            incident = min(detect_incidents(scenario.snapshot, scenario.events),
+                           key=lambda item: abs((item.start - scenario.onset).total_seconds()))
+            if incident.candidates:
+                out.append((incident.candidates[0].score, incident.candidates[0].ref == scenario.cause_ref))
+        return out
+
+    fitted, tested = top_suggestions(fit_seed), top_suggestions(test_seed)
+    by_label: dict[str, dict[str, Any]] = {}
+    for name, rows in (("fit", fitted), ("test", tested)):
+        for score, correct in rows:
+            item = by_label.setdefault(confidence_label(score), {"fit": [0, 0], "test": [0, 0]})[name]
+            item[0] += 1
+            item[1] += correct
+    calibrator = IsotonicCalibrator.fit([score for score, _ in fitted], [correct for _, correct in fitted])
+    labels = [correct for _, correct in tested]
+    return {
+        "byLabel": {label: {split: {"n": n, "correct": round(hits / n, 3)} for split, (n, hits) in item.items() if n}
+                    for label, item in by_label.items()},
+        "eceScoreAsProbability": expected_calibration_error([score for score, _ in tested], labels),
+        "eceIsotonic": expected_calibration_error([calibrator(score) for score, _ in tested], labels),
+        "brierScoreAsProbability": brier_score([score for score, _ in tested], labels),
+        "brierIsotonic": brier_score([calibrator(score) for score, _ in tested], labels),
+        "reliabilityScore": reliability([score for score, _ in tested], labels, 5),
+        "n": len(tested), "fitSeed": fit_seed, "testSeed": test_seed,
+    }
+
+
 # -- 4. change risk vs later bug fixes on real history ---------------------------------------------------
 
 def _snapshot_at(repo: Path, history: Sequence[GitCommit], cutoff: datetime, window: timedelta) -> RepositorySnapshot:
@@ -371,6 +409,7 @@ def evaluate_learned_risk(repo: Path, every_days: int = 60, window_days: int = 9
                           limit: int = 40) -> dict[str, Any]:
     """At each past date T (oldest first): fit the model on dates whose horizon ended by T, then rank the
     files changed before T and check them against bug fixes in the horizon after T."""
+    from .calibration import IsotonicCalibrator
     from .learned_risk import FEATURES, TrainingRow, features, fit
     unanchored = [name for name in FEATURES if name != "fixedScore"]
 
@@ -392,6 +431,11 @@ def evaluate_learned_risk(repo: Path, every_days: int = 60, window_days: int = 9
     dated.reverse()
 
     evaluations = []
+    # Calibration: (cutoff, probability, label) of every past learned prediction; a date is calibrated
+    # with the predictions whose 90-day outcome was known by then.
+    predicted: list[tuple[datetime, float, bool]] = []
+    raw_pairs: list[tuple[float, bool]] = []
+    calibrated_pairs: list[tuple[float, bool]] = []
     for index, (cutoff, rows, fixed_scores) in enumerate(dated):
         labels = [row.label for row in rows]
         if len(rows) < 4 or not any(labels) or all(labels):
@@ -406,6 +450,12 @@ def evaluate_learned_risk(repo: Path, every_days: int = 60, window_days: int = 9
         }
         if model:
             scores["learned"] = [model.probability(row.x) for row in rows]
+            known = [(p, y) for at, p, y in predicted if at + horizon <= cutoff]
+            if len(known) >= CALIBRATION_MIN_POINTS and sum(y for _, y in known) >= 20:
+                calibrator = IsotonicCalibrator.fit([p for p, _ in known], [y for _, y in known])
+                raw_pairs += list(zip(scores["learned"], labels))
+                calibrated_pairs += [(calibrator(p), y) for p, y in zip(scores["learned"], labels)]
+            predicted += [(cutoff, p, y) for p, y in zip(scores["learned"], labels)]
         if plain:
             scores["learnedUnanchored"] = [plain.probability(row.x) for row in rows]
         evaluations.append({
@@ -439,8 +489,29 @@ def evaluate_learned_risk(repo: Path, every_days: int = 60, window_days: int = 9
         "recall@20%": {name: mean_over(learned_rows, "recall@20%", name) for name in methods},
         "learnedWins": sum(1 for row in learned_rows if row["auc"]["learned"] > row["auc"]["fixed"]),
         "coldStart": cold_start,
+        "calibration": _calibration_report(raw_pairs, calibrated_pairs),
         "weights": final_model.to_json()["weights"] if final_model else None,
         "rows": evaluations,
+    }
+
+
+CALIBRATION_MIN_POINTS = 200
+
+
+def _calibration_report(raw: Sequence[tuple[float, bool]], calibrated: Sequence[tuple[float, bool]]) -> dict[str, Any]:
+    from .calibration import brier_score, expected_calibration_error, reliability
+    if not raw:
+        return {"predictions": 0}
+    labels = [y for _, y in raw]
+    return {
+        "predictions": len(raw), "baseRate": round(sum(labels) / len(labels), 3),
+        "eceRaw": expected_calibration_error([p for p, _ in raw], labels),
+        "eceCalibrated": expected_calibration_error([p for p, _ in calibrated], labels),
+        "brierRaw": brier_score([p for p, _ in raw], labels),
+        "brierCalibrated": brier_score([p for p, _ in calibrated], labels),
+        "reliabilityRaw": reliability([p for p, _ in raw], labels, 5),
+        "reliabilityCalibrated": reliability([p for p, _ in calibrated], labels, 5),
+        "pairs": {"raw": [(round(p, 4), y) for p, y in raw], "calibrated": [(round(p, 4), y) for p, y in calibrated]},
     }
 
 

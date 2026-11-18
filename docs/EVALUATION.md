@@ -179,6 +179,72 @@ literature.
 In production the labels also include changes that engineers confirm as an incident's cause (`feedback.py`),
 which public repositories do not have; that part is tested in `tests/test_learned_risk.py`, not measured here.
 
+## 7. Calibration: does AEIP's confidence mean what it says?
+
+A calibrated 70% is right about 70% of the time. Measured with the expected calibration error (ECE: the
+average gap between stated confidence and observed frequency, 0 = perfect) and the Brier score (mean squared
+error of the probabilities). Isotonic regression (`src/calibration.py`) was tried as a correction, always
+fitted on earlier or separate predictions, never on the ones it is scored on.
+
+### Learned risk probability (real history)
+
+1281 out-of-sample predictions on 6 repositories (each date predicted by a model
+trained on earlier dates, and recalibrated with earlier predictions only).
+
+| | ECE | Brier |
+|---|---|---|
+| Model probability as is | 0.036 | 0.161 |
+| After isotonic recalibration | 0.036 | 0.165 |
+
+| Stated | predictions | average stated | observed share that broke |
+|---|---|---|---|
+| 0.0-0.2 | 679 | 13.1% | 12.4% |
+| 0.2-0.4 | 406 | 28.3% | 27.6% |
+| 0.4-0.6 | 132 | 49.3% | 53.0% |
+| 0.6-0.8 | 56 | 66.6% | 53.6% |
+| 0.8-1.0 | 8 | 83.4% | 50.0% |
+
+**Reading.** The logistic model is already calibrated on average, and recalibration did not improve it, so it
+is not applied. The highest band is overconfident, on few predictions. Because calibration also differs
+between repositories, AEIP backtests every repository's own history when it learns (`backtest` in
+`src/learned_risk.py`) and shows that track record next to each probability, for example "when AEIP said
+20-40% for this repository before, 27% of those files broke".
+
+### Incident root cause: evidence labels (generated incidents)
+
+The top suggestion's label against whether it was the true cause, on two independently generated sets of
+300 incidents (seeds 7 and 8).
+
+| Label | set 1: n | set 1: right | set 2: n | set 2: right |
+|---|---|---|---|---|
+| likely (strong evidence) | 135 | 87.4% | 139 | 90.6% |
+| possible (some evidence) | 116 | 78.4% | 116 | 81.0% |
+| weak (limited evidence) | 49 | 89.8% | 45 | 91.1% |
+
+Read as a probability, the score is badly underconfident (ECE 0.367); isotonic
+recalibration fitted on set 1 brings set 2 to ECE 0.032.
+
+**Reading.** The labels do not separate right from wrong suggestions: "weak" was right as often as
+"likely". The recalibrated probability is not shown in the product, because every generated incident has a
+change as its cause, while real incidents can have none (an outage, a traffic spike), so it would be
+overconfident in production. Instead the labels are shown as strength of evidence, not as likelihood, and
+the Incidents page shows the real track record from engineers' verdicts (top suggestion confirmed in X of
+Y reviewed incidents, per evidence label), which is calibration measured on the repository's own incidents.
+
+### CI failure verdict confidence
+
+Only 39 labelled cases (section 1), too few to fit a calibration; reported as is.
+
+| Stated confidence | cases | average stated | observed correct |
+|---|---|---|---|
+| 0.2-0.4 | 2 | 35.0% | 100.0% |
+| 0.4-0.6 | 4 | 43.8% | 100.0% |
+| 0.6-0.8 | 14 | 68.9% | 92.9% |
+| 0.8-1.0 | 19 | 83.7% | 100.0% |
+
+ECE 0.256: the stated confidence is lower than the observed accuracy (underconfident). The cases are
+the ones the rules were checked against, so the accuracy itself is optimistic (section 1).
+
 ## Not yet measured
 
 - Verdict accuracy (related / unrelated to the commit) on labelled failures from real team pipelines. Public data

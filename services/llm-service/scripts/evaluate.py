@@ -28,7 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.embeddings import EmbeddingCache, HashingEmbedder  # noqa: E402
-from src.evaluation import (evaluate_incidents, evaluate_learned_risk, evaluate_retrieval,  # noqa: E402
+from src.calibration import brier_score, expected_calibration_error, reliability  # noqa: E402
+from src.evaluation import (evaluate_incident_calibration, evaluate_incidents, evaluate_learned_risk,  # noqa: E402
+                            evaluate_retrieval,
                             evaluate_risk_history, evaluate_verdicts, git_documents, load_json)
 from src.public_benchmarks import evaluate_logchunks, logchunks_root  # noqa: E402
 
@@ -50,6 +52,7 @@ def main() -> int:
     started = time.perf_counter()
     results["verdicts"] = evaluate_verdicts(load_json(DATA / "failure_verdicts.json")["cases"])
     results["incidents"] = evaluate_incidents(args.incidents)
+    results["incidentCalibration"] = evaluate_incident_calibration(args.incidents)
     print(f"verdicts + incidents in {time.perf_counter() - started:.1f}s")
 
     if args.repos:
@@ -111,6 +114,77 @@ def pool_learned(learned: dict) -> dict:
                           "changes": mean("changes"),
                           "learnedWorse": sum(1 for row in rows if row["auc"]["learned"] < row["auc"]["fixed"] - 0.02)}
     return pooled
+
+
+def pooled_risk_calibration(learned: dict) -> dict | None:
+    raw = [pair for item in learned.values() for pair in item.get("calibration", {}).get("pairs", {}).get("raw", [])]
+    calibrated = [pair for item in learned.values()
+                  for pair in item.get("calibration", {}).get("pairs", {}).get("calibrated", [])]
+    if not raw:
+        return None
+    labels = [bool(y) for _, y in raw]
+    return {"n": len(raw), "repositories": sum(1 for item in learned.values() if item.get("calibration", {}).get("predictions")),
+            "eceRaw": expected_calibration_error([p for p, _ in raw], labels),
+            "eceIsotonic": expected_calibration_error([p for p, _ in calibrated], labels),
+            "brierRaw": brier_score([p for p, _ in raw], labels), "brierIsotonic": brier_score([p for p, _ in calibrated], labels),
+            "table": reliability([p for p, _ in raw], labels, 5)}
+
+
+def calibration_section(results: dict) -> list[str]:
+    lines = ["", "## 7. Calibration: does AEIP's confidence mean what it says?", "",
+             "A calibrated 70% is right about 70% of the time. Measured with the expected calibration error (ECE: the",
+             "average gap between stated confidence and observed frequency, 0 = perfect) and the Brier score (mean squared",
+             "error of the probabilities). Isotonic regression (`src/calibration.py`) was tried as a correction, always",
+             "fitted on earlier or separate predictions, never on the ones it is scored on."]
+    pooled = pooled_risk_calibration(results.get("learnedRisk") or {})
+    if pooled:
+        lines += ["", "### Learned risk probability (real history)", "",
+                  f"{pooled['n']} out-of-sample predictions on {pooled['repositories']} repositories (each date predicted by a model",
+                  "trained on earlier dates, and recalibrated with earlier predictions only).", "",
+                  "| | ECE | Brier |", "|---|---|---|",
+                  f"| Model probability as is | {pooled['eceRaw']:.3f} | {pooled['brierRaw']:.3f} |",
+                  f"| After isotonic recalibration | {pooled['eceIsotonic']:.3f} | {pooled['brierIsotonic']:.3f} |", "",
+                  "| Stated | predictions | average stated | observed share that broke |", "|---|---|---|---|"]
+        lines += [f"| {row['bin']} | {row['n']} | {pct(row['stated'])} | {pct(row['observed'])} |" for row in pooled["table"]]
+        lines += ["",
+                  "**Reading.** The logistic model is already calibrated on average, and recalibration did not improve it, so it",
+                  "is not applied. The highest band is overconfident, on few predictions. Because calibration also differs",
+                  "between repositories, AEIP backtests every repository's own history when it learns (`backtest` in",
+                  "`src/learned_risk.py`) and shows that track record next to each probability, for example \"when AEIP said",
+                  "20-40% for this repository before, 27% of those files broke\"."]
+    incident = results.get("incidentCalibration")
+    if incident:
+        names = {"likely": "likely (strong evidence)", "possible": "possible (some evidence)", "weak": "weak (limited evidence)"}
+        lines += ["", "### Incident root cause: evidence labels (generated incidents)", "",
+                  f"The top suggestion's label against whether it was the true cause, on two independently generated sets of",
+                  f"{incident['n']} incidents (seeds {incident['fitSeed']} and {incident['testSeed']}).", "",
+                  "| Label | set 1: n | set 1: right | set 2: n | set 2: right |", "|---|---|---|---|---|"]
+        for label in ("likely", "possible", "weak"):
+            item = incident["byLabel"].get(label)
+            if item:
+                fit, test = item.get("fit", {}), item.get("test", {})
+                lines.append(f"| {names[label]} | {fit.get('n', 0)} | {pct(fit.get('correct'))} | {test.get('n', 0)} | {pct(test.get('correct'))} |")
+        lines += ["",
+                  f"Read as a probability, the score is badly underconfident (ECE {incident['eceScoreAsProbability']:.3f}); isotonic",
+                  f"recalibration fitted on set 1 brings set 2 to ECE {incident['eceIsotonic']:.3f}.", "",
+                  "**Reading.** The labels do not separate right from wrong suggestions: \"weak\" was right as often as",
+                  "\"likely\". The recalibrated probability is not shown in the product, because every generated incident has a",
+                  "change as its cause, while real incidents can have none (an outage, a traffic spike), so it would be",
+                  "overconfident in production. Instead the labels are shown as strength of evidence, not as likelihood, and",
+                  "the Incidents page shows the real track record from engineers' verdicts (top suggestion confirmed in X of",
+                  "Y reviewed incidents, per evidence label), which is calibration measured on the repository's own incidents."]
+    verdicts = results.get("verdicts")
+    if verdicts and verdicts.get("rows"):
+        rows = verdicts["rows"]
+        table = reliability([row["confidence"] for row in rows], [row["correct"] for row in rows], 5)
+        lines += ["", "### CI failure verdict confidence", "",
+                  f"Only {len(rows)} labelled cases (section 1), too few to fit a calibration; reported as is.", "",
+                  "| Stated confidence | cases | average stated | observed correct |", "|---|---|---|---|"]
+        lines += [f"| {row['bin']} | {row['n']} | {pct(row['stated'])} | {pct(row['observed'])} |" for row in table]
+        lines += ["", f"ECE {expected_calibration_error([row['confidence'] for row in rows], [row['correct'] for row in rows]):.3f}"
+                      ": the stated confidence is lower than the observed accuracy (underconfident). The cases are",
+                  "the ones the rules were checked against, so the accuracy itself is optimistic (section 1)."]
+    return lines
 
 
 def render(results: dict) -> str:
@@ -360,6 +434,7 @@ def render(results: dict) -> str:
             "In production the labels also include changes that engineers confirm as an incident's cause (`feedback.py`),",
             "which public repositories do not have; that part is tested in `tests/test_learned_risk.py`, not measured here.",
         ]
+    lines += calibration_section(results)
     lines += [
         "",
         "## Not yet measured",

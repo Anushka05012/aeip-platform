@@ -9,15 +9,22 @@ export type RiskItem = {
   pastFixes?: number;
   breakdown?: RiskBreakdown;
   /** From the repository's learned model, once it has enough labels (see RiskModel). */
-  learned?: { probability: number; drivers: string[] } | null;
+  learned?: { probability: number; drivers: string[]; trackRecord?: string } | null;
 };
 /** What AEIP has learned about which changes break this repository. */
 export type RiskModel = {
   active: boolean; labels: number; incidentLabels: number; bugFixLabels: number; examples: number;
   needed: number; message: string; weights: { signal: string; weight: number }[];
   savedCauses?: number; historyCommits?: number; historySource?: string;
+  trackRecord?: RiskBand[]; backtestPredictions?: number;
 };
 export type CauseVerdict = "confirmed" | "rejected";
+/** How often the top suggestion was the confirmed cause, from engineers verdicts. */
+export type IncidentTrackRecord = {
+  reviewed: number; top1: number; top3: number;
+  byEvidence: Partial<Record<"likely" | "possible" | "weak", { reviewed: number; correct: number }>>;
+};
+export type RiskBand = { label: string; low: number; high: number; n: number; stated: number; observed: number };
 export type RiskBreakdown = {
   frequency: number; churn: number; complexity: number; testGap: number; blastRadius: number; dependencies: number;
 };

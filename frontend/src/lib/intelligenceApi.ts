@@ -1,4 +1,4 @@
-import { AssistantAnswer, CauseVerdict, FailureExplanation, IncidentDetail, IncidentSummary, IntelligenceOverview, RepositorySummary, RiskModel } from "@/types";
+import { AssistantAnswer, CauseVerdict, FailureExplanation, IncidentDetail, IncidentSummary, IncidentTrackRecord, IntelligenceOverview, RepositorySummary, RiskModel } from "@/types";
 
 // Same-origin backend-for-frontend (src/app/api/aeip): it adds auth and forwards to INTELLIGENCE_API_URL.
 const baseUrl = "/api/aeip";
@@ -78,7 +78,7 @@ export function askAssistant(question: string, repository = getActiveRepository(
 }
 
 export function listIncidents(repository = getActiveRepository()): Promise<{
-  repository: string; eventsBySource: Record<string, number>; incidents: IncidentSummary[];
+  repository: string; eventsBySource: Record<string, number>; incidents: IncidentSummary[]; trackRecord?: IncidentTrackRecord;
 }> {
   const query = repository ? `?repository=${encodeURIComponent(repository)}` : "";
   return request(`/api/incidents${query}`);

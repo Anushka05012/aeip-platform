@@ -224,7 +224,28 @@ class IntelligenceDemoService:
         entry, found = self._incidents(repository)
         counts = self.list_events(entry.snapshot.repository, limit=1)["bySource"]
         return {"repository": entry.snapshot.repository, "eventsBySource": counts,
-                "incidents": [item.summary() for item in found]}
+                "incidents": [item.summary() for item in found],
+                "trackRecord": self._incident_track_record(entry.snapshot.repository, found)}
+
+    def _incident_track_record(self, repository: str, found: list) -> dict[str, Any]:
+        """How often AEIP's top suggestion was the cause, from engineers' verdicts: real-world calibration
+        of the ranking and of each evidence label (generated benchmarks cannot measure this)."""
+        reviewed, top1, top3 = 0, 0, 0
+        by_label: dict[str, dict[str, int]] = {}
+        for incident in found:
+            verdicts = self.feedback.for_incident(repository, incident.id)
+            confirmed = {ref for ref, verdict in verdicts.items() if verdict == "confirmed"}
+            if not incident.candidates or not (confirmed or incident.candidates[0].ref in verdicts):
+                continue  # not reviewed (or only lower suggestions judged)
+            refs = [candidate.ref for candidate in incident.candidates]
+            hit = refs[0] in confirmed
+            reviewed += 1
+            top1 += hit
+            top3 += any(ref in confirmed for ref in refs[:3])
+            label = by_label.setdefault(incident.candidates[0].to_json()["confidence"], {"reviewed": 0, "correct": 0})
+            label["reviewed"] += 1
+            label["correct"] += hit
+        return {"reviewed": reviewed, "top1": top1, "top3": top3, "byEvidence": by_label}
 
     def incident(self, incident_id: str, repository: str | None = None, use_ai: bool = False) -> dict[str, Any]:
         entry, found = self._incidents(repository)

@@ -1,3 +1,9 @@
+/** Root-cause labels describe how much evidence points at a change, not how likely it is to be right:
+ * on the benchmark, "weak" suggestions were right as often as "likely" ones (docs/EVALUATION.md, section 7). */
+export function evidenceLabel(confidence: "likely" | "possible" | "weak") {
+  return { likely: "strong evidence", possible: "some evidence", weak: "limited evidence" }[confidence];
+}
+
 export function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;

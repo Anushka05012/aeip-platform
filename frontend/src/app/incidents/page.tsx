@@ -4,9 +4,9 @@ import { type ReactNode, useEffect, useState } from "react";
 import IncidentTimeline from "@/components/incidents/IncidentTimeline";
 import { Badge, Button, Empty, Notice, PageHeader, Panel, type Tone } from "@/components/ui";
 import { getIncident, listIncidents, sendCauseFeedback } from "@/lib/intelligenceApi";
-import { formatDuration, shortSha, utcTime } from "@/lib/format";
+import { evidenceLabel, formatDuration, shortSha, utcTime } from "@/lib/format";
 import { useSession } from "@/lib/useSession";
-import { CauseVerdict, IncidentDetail, IncidentSummary, RootCause } from "@/types";
+import { CauseVerdict, IncidentDetail, IncidentSummary, IncidentTrackRecord, RootCause } from "@/types";
 
 const confidenceTone: Record<RootCause["confidence"], Tone> = { likely: "bad", possible: "warn", weak: "neutral" };
 const signalNames: Record<string, string> = {
@@ -43,7 +43,7 @@ function CauseCard({ cause, rank, verdict, canVote, busy, onVote }: {
     <div className="flex items-center gap-2 flex-wrap">
       <span className="font-mono text-[12px] text-muted">#{rank + 1}</span>
       <span className="text-[13.5px] font-medium text-ink">{cause.title}</span>
-      <Badge tone={confidenceTone[cause.confidence]}>{cause.confidence}</Badge>
+      <Badge tone={confidenceTone[cause.confidence]}>{evidenceLabel(cause.confidence)}</Badge>
       <span className="font-mono text-[12px] text-ink-2">{cause.score.toFixed(2)}</span>
     </div>
     <ul className="mt-2 list-disc pl-5 text-[12.5px] text-ink-2 flex flex-col gap-0.5 marker:text-muted">
@@ -60,6 +60,19 @@ function CauseCard({ cause, rank, verdict, canVote, busy, onVote }: {
     </div>
     <Verdict verdict={verdict} canVote={canVote} busy={busy} onVote={onVote} />
   </div>;
+}
+
+function TrackRecord({ record }: { record: IncidentTrackRecord }) {
+  if (!record.reviewed) return <p className="text-[12.5px] text-muted -mt-3">
+    Track record: no incidents reviewed yet. Mark the real cause on an incident to measure how often AEIP points at it.
+  </p>;
+  const labels = (["likely", "possible", "weak"] as const).filter((key) => record.byEvidence[key]?.reviewed)
+    .map((key) => `${evidenceLabel(key)}: ${record.byEvidence[key]!.correct} of ${record.byEvidence[key]!.reviewed}`);
+  return <p className="text-[12.5px] text-ink-2 -mt-3" role="status">
+    Track record in this repository: the top suggestion was the confirmed cause in <span className="font-mono">{record.top1} of {record.reviewed}</span> reviewed
+    incident{record.reviewed === 1 ? "" : "s"} (top 3: <span className="font-mono">{record.top3}</span>).
+    {!!labels.length && <span className="text-muted"> By evidence: {labels.join(" · ")}.</span>}
+  </p>;
 }
 
 function Detail({ incident, onAi, busy, onFeedback }: {
@@ -110,7 +123,7 @@ function Detail({ incident, onAi, busy, onFeedback }: {
               key={cause.ref + cause.title} cause={cause} rank={index} verdict={incident.feedback?.[cause.ref]}
               canVote={can("member")} busy={!!voting} onVote={(verdict) => vote(cause.ref, verdict)} />)}</div>
           : <p className="text-[13px] text-ink-2">No deploy, migration, config change or commit went live in the 24 hours before this incident.</p>}
-        {top?.confidence === "weak" && <div className="mt-2"><Notice tone="warn">Weak evidence: confirm with the timeline before acting.</Notice></div>}
+        {top?.confidence === "weak" && <div className="mt-2"><Notice tone="warn">Limited evidence: confirm with the timeline before acting.</Notice></div>}
         {voteError && <div className="mt-2"><Notice tone="bad">{voteError}</Notice></div>}
         {learned && <p className="mt-2 text-[12.5px] text-ink-2" role="status">{learned}</p>}
         {!!incident.candidates.length && can("member") && !learned && <p className="mt-2 text-[11.5px] text-muted">
@@ -135,6 +148,7 @@ function Detail({ incident, onAi, busy, onFeedback }: {
 export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<IncidentSummary[] | null>(null);
   const [sources, setSources] = useState<Record<string, number>>({});
+  const [record, setRecord] = useState<IncidentTrackRecord | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<IncidentDetail | null>(null);
   const [loading, setLoading] = useState("");
@@ -155,6 +169,7 @@ export default function IncidentsPage() {
     listIncidents().then((data) => {
       setIncidents(data.incidents);
       setSources(data.eventsBySource);
+      setRecord(data.trackRecord ?? null);
       const wanted = new URLSearchParams(window.location.search).get("id");
       const first = data.incidents.find((item) => item.id === wanted) ?? data.incidents[0];
       if (first) open(first.id);
@@ -166,6 +181,7 @@ export default function IncidentsPage() {
     <PageHeader title="Incidents"
       meta={<>Production errors from every connected tool, grouped into incidents, each traced to the change that most likely caused it.
         {connected && <> Events: <span className="font-mono">{connected}</span>.</>}</>} />
+    {record && <TrackRecord record={record} />}
     {error && <Notice tone="bad">{error}</Notice>}
     {incidents && !incidents.length && <Panel>
       <Empty>No incidents. {Object.keys(sources).length ? "No error signals in the connected events." :
@@ -187,7 +203,7 @@ export default function IncidentsPage() {
                   {utcTime(item.start, true)} UTC · {formatDuration(item.durationMinutes)} · {item.errorCount} signals · {item.services.join(", ")}
                 </p>
                 {item.rootCause && <p className="mt-1 pl-[15px] text-[12.5px] text-ink-2 truncate">
-                  <span className="text-muted">Cause ({item.rootCause.confidence}):</span> {item.rootCause.title}
+                  <span className="text-muted">Cause ({evidenceLabel(item.rootCause.confidence)}):</span> {item.rootCause.title}
                 </p>}
                 {loading === item.id && <p className="mt-1 pl-[15px] text-[12px] text-muted">Loading…</p>}
               </button>
@@ -197,7 +213,10 @@ export default function IncidentsPage() {
       </Panel>
       <div>
         {selected ? <Detail key={selected.id} incident={selected} busy={loading === selected.id} onAi={() => open(selected.id, true)}
-          onFeedback={(feedback) => setSelected((current) => current && { ...current, feedback })} />
+          onFeedback={(feedback) => {
+            setSelected((current) => current && { ...current, feedback });
+            listIncidents().then((data) => setRecord(data.trackRecord ?? null)).catch(() => undefined);
+          }} />
           : <div className="border border-dashed border-line-strong rounded-md p-6 text-[13px] text-muted">Choose an incident.</div>}
       </div>
     </div>}

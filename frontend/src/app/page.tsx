@@ -7,7 +7,7 @@ import DeployChart from "@/components/dashboard/DeployChart";
 import RiskList from "@/components/dashboard/RiskList";
 import FailuresFeed from "@/components/dashboard/FailuresFeed";
 import { Badge, Empty, Notice, PageHeader, Panel } from "@/components/ui";
-import { formatDuration, utcTime } from "@/lib/format";
+import { evidenceLabel, formatDuration, utcTime } from "@/lib/format";
 import { getOverview } from "@/lib/intelligenceApi";
 import { IntelligenceOverview } from "@/types";
 
@@ -37,7 +37,7 @@ export default function OverviewPage() {
             <span className="text-[13.5px] font-medium text-ink">{item.title}</span>
             <span className="text-[12px] text-muted">{utcTime(item.start, true)} UTC · {formatDuration(item.durationMinutes)}</span>
             {item.rootCause && <span className="text-[12.5px] text-ink-2 ml-auto">
-              <span className="text-muted">Cause:</span> {item.rootCause.title} <span className="text-muted">({item.rootCause.confidence})</span>
+              <span className="text-muted">Cause:</span> {item.rootCause.title} <span className="text-muted">({evidenceLabel(item.rootCause.confidence)})</span>
             </span>}
           </Link>
         </li>)}

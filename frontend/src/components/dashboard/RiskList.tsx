@@ -48,7 +48,8 @@ export function RiskTable({ items }: { items: RiskItem[] }) {
                         <tr key={item.file} className="hover:bg-paper">
                             <td className={`${td} font-mono text-[12.5px] text-ink break-all`}>{item.file}</td>
                             <td className={td} title={breakdownText(item)}><ScoreBar score={item.score} /></td>
-                            {learned && <td className={`${td} text-right font-mono`} title={item.learned?.drivers.join("\n")}>
+                            {learned && <td className={`${td} text-right font-mono`}
+                                title={[...(item.learned?.drivers ?? []), item.learned?.trackRecord].filter(Boolean).join("\n")}>
                                 {item.learned ? `${Math.round(item.learned.probability * 100)}%` : "–"}
                             </td>}
                             <td className={td}><Badge tone={levelTone(levelOf(item))}>{levelOf(item)}</Badge></td>

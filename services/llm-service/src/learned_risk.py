@@ -231,6 +231,8 @@ class RiskLearning:
     current: dict[str, RiskResult] = field(default_factory=dict)  # today's signals, from the same history
     history_commits: int = 0
     history_source: str = ""
+    track_record: list[dict[str, Any]] = field(default_factory=list)  # backtest: stated vs observed, per band
+    backtest_predictions: int = 0
 
     @property
     def active(self) -> bool:
@@ -246,7 +248,11 @@ class RiskLearning:
         if not self.active or self.model is None:
             return None
         x = features(self.current.get(result.path, result), past_incidents)
-        return {"probability": round(self.model.probability(x), 3), "drivers": self.model.explain(x)}
+        probability = self.model.probability(x)
+        band = next((item for item in self.track_record if item["low"] <= probability < item["high"]), None)
+        record = (f"When AEIP said {band['label']} for this repository before, {round(band['observed'] * 100)}% of "
+                  f"those files broke ({band['n']} files)") if band else ""
+        return {"probability": round(probability, 3), "drivers": self.model.explain(x), "trackRecord": record}
 
     def status(self, saved_causes: int = 0) -> dict[str, Any]:
         """`saved_causes`: confirmed incident causes on record, including ones too recent to train on yet."""
@@ -265,6 +271,7 @@ class RiskLearning:
             "bugFixLabels": self.positives - self.incident_labels, "examples": self.rows,
             "needed": USE_FROM_POSITIVES, "savedCauses": saved_causes, "message": message,
             "historyCommits": self.history_commits, "historySource": self.history_source,
+            "trackRecord": self.track_record, "backtestPredictions": self.backtest_predictions,
             "weights": [{"signal": LABELS[name], "weight": round(value, 3)}
                         for name, value in sorted(weights.items(), key=lambda item: -abs(item[1]))],
         }
@@ -276,12 +283,38 @@ def learn(snapshot: RepositorySnapshot, now: datetime, window_days: int = 90, ho
     """Train on the repository's own history (no data after `now - horizon`). The defaults are the
     settings measured in docs/EVALUATION.md, section 6."""
     engine = RiskEngine()
-    rows = [row for cutoff in training_cutoffs(snapshot.commits, now, horizon_days, every_days)
-            for row in rows_at(snapshot, cutoff, window_days, horizon_days, incidents, include, engine)]
+    dated = [(cutoff, rows_at(snapshot, cutoff, window_days, horizon_days, incidents, include, engine))
+             for cutoff in reversed(training_cutoffs(snapshot.commits, now, horizon_days, every_days))]
+    rows = [row for _, rows_then in dated for row in rows_then]
+    record, predictions = backtest(dated, horizon_days)
     model = fit(rows)
     if model:
         model.trained_at = now.isoformat()
     current = {result.path: result for result in engine.score_files(snapshot, now, window_days, include)}
     return RiskLearning(model, len(rows), sum(row.label for row in rows),
                         sum(1 for row in rows if row.source == "incident"), window_days, current,
-                        len(snapshot.commits), history_source)
+                        len(snapshot.commits), history_source, record, predictions)
+
+
+BANDS = ((0.0, 0.2, "under 20%"), (0.2, 0.4, "20-40%"), (0.4, 0.6, "40-60%"), (0.6, 1.01, "60% or more"))
+
+
+def backtest(dated: Sequence[tuple[datetime, list[TrainingRow]]], horizon_days: int) -> tuple[list[dict[str, Any]], int]:
+    """Replay the history: each past date is predicted by a model trained only on dates whose outcome was
+    known by then. Returns, per probability band, how often the files actually broke."""
+    pairs: list[tuple[float, bool]] = []
+    horizon = timedelta(days=horizon_days)
+    for index, (cutoff, rows_then) in enumerate(dated):
+        training = [row for earlier, earlier_rows in dated[:index] if earlier + horizon <= cutoff for row in earlier_rows]
+        model = fit(training)
+        if model is None or sum(row.label for row in training) < USE_FROM_POSITIVES:
+            continue  # only dates where AEIP would have used the model
+        pairs += [(model.probability(row.x), row.label) for row in rows_then]
+    record = []
+    for low, high, label in BANDS:
+        members = [y for p, y in pairs if low <= p < high]
+        if members:
+            record.append({"label": label, "low": low, "high": high, "n": len(members),
+                           "stated": round(sum(p for p, _ in pairs if low <= p < high) / len(members), 3),
+                           "observed": round(sum(members) / len(members), 3)})
+    return record, len(pairs)
