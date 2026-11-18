@@ -11,6 +11,7 @@ Measured 2026-11-18 with `services/llm-service/scripts/evaluate.py`; raw numbers
 | Which change caused this incident? (300 generated incidents) | top-1 84.3%, top-3 98.3% | "most recent change" heuristic: top-1 63.0% |
 | Can ask-the-codebase find the implementing file? (25 questions, 100 files) | Hit@5 80.0%, MRR 0.544 (semantic) | hashing Hit@5 68.0%; random ≈7% |
 | Does risk predict later bug fixes? (real history) | click: AUC 0.628, P@3 40.0%; black: AUC 0.609, P@3 52.1% | random AUC 0.5; click: change count AUC 0.654, base rate 31.7%; black: change count AUC 0.730, base rate 31.2% |
+| Does AEIP show why a real CI build failed? (347 held-out logs, public LogChunks labels) | failure reason found in 83.6%, line recall 0.615 | before: 72.6%; last 40 lines: 62.0% |
 
 ## 1. CI failure verdicts
 
@@ -102,7 +103,40 @@ was inconsistent, and dependency updates carried no signal. Re-weighting toward 
 repository and hurt the other, so the weights were left unchanged; learning them from many more
 repositories is future work.
 
+## 5. Real CI logs: does AEIP show why the build failed? (public dataset)
+
+LogChunks (Brandt et al., MSR 2020, CC-BY 4.0): 797 real Travis CI logs from 80 repositories in 29 languages. The authors labelled
+the part of each log that says why the build failed and validated a sample with the developers who broke
+the build. Every method gets the same budget of 40 lines, which is also what AEIP passes to the LLM.
+
+- *failure reason found*: at least one labelled line is shown
+- *line recall*: share of the labelled lines shown
+- *whole reason shown*: every labelled line is shown
+
+The repositories are split in half by a fixed hash of their name. The extractor was improved by studying the
+development half only; the held-out half was scored once, afterwards.
+
+| Split | Method | logs | failure reason found | line recall | whole reason shown | lines shown |
+|---|---|---|---|---|---|---|
+| held-out | AEIP (failing-step anchored) | 347 | 83.6% | 0.615 | 44.1% | 25.9 |
+| held-out | AEIP before this benchmark | 347 | 72.6% | 0.466 | 27.4% | 34.6 |
+| held-out | Last 40 lines of the log | 347 | 62.0% | 0.516 | 39.5% | 40 |
+| development | AEIP (failing-step anchored) | 450 | 78.0% | 0.597 | 42.0% | 27.3 |
+| development | AEIP before this benchmark | 450 | 70.0% | 0.423 | 26.2% | 36.4 |
+| development | Last 40 lines of the log | 450 | 59.1% | 0.486 | 38.2% | 40 |
+
+**What the benchmark changed.** The previous extractor kept the last 40 error-looking lines of the whole log.
+On real logs those are often printed *after* the failure by cleanup, cache or artifact-upload hooks ("failed
+to upload ... no such file"), which pushed the real cause out. AEIP now finds the step whose command failed
+("The command ... exited with 1", "Process completed with exit code 1", "Job failed: exit code 1"),
+searches only that step, keeps the errors nearest the failure with three lines of context for stack traces,
+and recognises failure wording without the word "error" (linter rule ids, Elixir throws, exceeded limits,
+TAP `not ok`). The verdict benchmark (section 1) is unchanged by this.
+
+Limits: Travis CI logs (the dataset was collected in 2019, before GitHub Actions); the labels mark where the reason is, not whether the commit caused it.
+
 ## Not yet measured
 
-- Verdict accuracy on ~100 labelled failures from real team pipelines (needs labelled production data).
+- Verdict accuracy (related / unrelated to the commit) on labelled failures from real team pipelines. Public data
+  labels *where* the failure reason is (section 5) or its category, not whether the commit caused it.
 - Time saved compared with switching between GitHub, CI, deploy, log and database tools (needs a user study).

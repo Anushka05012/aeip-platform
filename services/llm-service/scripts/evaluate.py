@@ -2,10 +2,14 @@
 
     python scripts/evaluate.py --repos <dir>          # <dir> holds git clones of pallets/click and psf/black
     python scripts/evaluate.py                        # only the benchmarks that need no clones
+    python scripts/evaluate.py --datasets <dir>       # adds public datasets found in <dir> (see below)
 
 Get the clones (read-only; nothing in them is executed):
     git clone https://github.com/pallets/click.git <dir>/click
     git clone https://github.com/psf/black.git <dir>/black
+
+Public datasets (labelled by their authors, not by us):
+    LogChunks (MSR 2020, CC-BY 4.0): https://zenodo.org/records/3632351 -> unzip into <datasets>/logchunks/
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 from src.embeddings import EmbeddingCache, HashingEmbedder  # noqa: E402
 from src.evaluation import (evaluate_incidents, evaluate_retrieval, evaluate_risk_history,  # noqa: E402
                             evaluate_verdicts, git_documents, load_json)
+from src.public_benchmarks import evaluate_logchunks, logchunks_root  # noqa: E402
 
 DATA = ROOT / "data" / "evaluation"
 REPORT = ROOT.parents[1] / "docs" / "EVALUATION.md"
@@ -31,6 +36,7 @@ REPORT = ROOT.parents[1] / "docs" / "EVALUATION.md"
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repos", type=Path, help="folder with clones of pallets/click and psf/black")
+    parser.add_argument("--datasets", type=Path, help="folder with downloaded public datasets (LogChunks, ...)")
     parser.add_argument("--incidents", type=int, default=300)
     parser.add_argument("--skip-semantic", action="store_true", help="skip the semantic-model retrieval run")
     args = parser.parse_args()
@@ -58,6 +64,14 @@ def main() -> int:
         results["risk"] = {name: evaluate_risk_history(args.repos / name, cutoffs=16, every_days=120)
                            for name in ("click", "black") if (args.repos / name).exists()}
         print(f"all benchmarks in {time.perf_counter() - started:.1f}s")
+
+    if args.datasets:
+        root = logchunks_root(args.datasets)
+        if root:
+            results["logchunks"] = evaluate_logchunks(root)
+            print(f"LogChunks in {time.perf_counter() - started:.1f}s")
+        else:
+            print(f"LogChunks not found under {args.datasets}")
 
     DATA.mkdir(parents=True, exist_ok=True)
     (DATA / "results.json").write_text(json.dumps(results, indent=1), encoding="utf-8")
@@ -99,6 +113,11 @@ def render(results: dict) -> str:
         bases = [f"{name}: change count AUC {item['meanAucChangeCountOnly']:.3f}, base rate {pct(item['meanBaseRate'])}"
                  for name, item in results["risk"].items()]
         lines.append(f"| Does risk predict later bug fixes? (real history) | {'; '.join(parts)} | random AUC 0.5; {'; '.join(bases)} |")
+    if "logchunks" in results:
+        held, before, tail = (results["logchunks"]["test"][name] for name in ("aeip", "aeipPrevious", "tail40"))
+        lines.append(f"| Does AEIP show why a real CI build failed? ({held['n']} held-out logs, public LogChunks labels) | "
+                     f"failure reason found in {pct(held['anyLineFound'])}, line recall {held['lineRecall']:.3f} | "
+                     f"before: {pct(before['anyLineFound'])}; last 40 lines: {pct(tail['anyLineFound'])} |")
 
     lines += [
         "",
@@ -211,11 +230,52 @@ def render(results: dict) -> str:
             "repository and hurt the other, so the weights were left unchanged; learning them from many more",
             "repositories is future work.",
         ]
+    if "logchunks" in results:
+        chunks = results["logchunks"]
+        names = {"aeip": "AEIP (failing-step anchored)", "aeipPrevious": "AEIP before this benchmark",
+                 "tail40": "Last 40 lines of the log"}
+        lines += [
+            "",
+            "## 5. Real CI logs: does AEIP show why the build failed? (public dataset)",
+            "",
+            f"LogChunks (Brandt et al., MSR 2020, CC-BY 4.0): {chunks['all']['aeip']['n']} real Travis CI logs from "
+            f"{chunks['repositories']} repositories in 29 languages. The authors labelled",
+            "the part of each log that says why the build failed and validated a sample with the developers who broke",
+            f"the build. Every method gets the same budget of {chunks['budget']} lines, which is also what AEIP passes to the LLM.",
+            "",
+            "- *failure reason found*: at least one labelled line is shown",
+            "- *line recall*: share of the labelled lines shown",
+            "- *whole reason shown*: every labelled line is shown",
+            "",
+            "The repositories are split in half by a fixed hash of their name. The extractor was improved by studying the",
+            "development half only; the held-out half was scored once, afterwards.",
+            "",
+            "| Split | Method | logs | failure reason found | line recall | whole reason shown | lines shown |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for split, label in (("test", "held-out"), ("dev", "development")):
+            for name, title in names.items():
+                item = chunks[split][name]
+                lines.append(f"| {label} | {title} | {item['n']} | {pct(item['anyLineFound'])} | {item['lineRecall']:.3f} | "
+                             f"{pct(item['wholeChunkFound'])} | {item['meanLinesShown']} |")
+        lines += [
+            "",
+            "**What the benchmark changed.** The previous extractor kept the last 40 error-looking lines of the whole log.",
+            "On real logs those are often printed *after* the failure by cleanup, cache or artifact-upload hooks (\"failed",
+            "to upload ... no such file\"), which pushed the real cause out. AEIP now finds the step whose command failed",
+            "(\"The command ... exited with 1\", \"Process completed with exit code 1\", \"Job failed: exit code 1\"),",
+            "searches only that step, keeps the errors nearest the failure with three lines of context for stack traces,",
+            "and recognises failure wording without the word \"error\" (linter rule ids, Elixir throws, exceeded limits,",
+            "TAP `not ok`). The verdict benchmark (section 1) is unchanged by this.",
+            "",
+            "Limits: Travis CI logs (the dataset was collected in 2019, before GitHub Actions); the labels mark where the reason is, not whether the commit caused it.",
+        ]
     lines += [
         "",
         "## Not yet measured",
         "",
-        "- Verdict accuracy on ~100 labelled failures from real team pipelines (needs labelled production data).",
+        "- Verdict accuracy (related / unrelated to the commit) on labelled failures from real team pipelines. Public data",
+        "  labels *where* the failure reason is (section 5) or its category, not whether the commit caused it.",
         "- Time saved compared with switching between GitHub, CI, deploy, log and database tools (needs a user study).",
         "",
     ]

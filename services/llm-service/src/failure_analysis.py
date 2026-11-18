@@ -103,24 +103,50 @@ def redact_secrets(text: str) -> str:
     return text
 
 
-def extract_error_lines(log: str, max_lines: int = 40, context: int = 1) -> list[str]:
-    """Error-looking lines (with a little context) from a CI log; falls back to the log tail."""
-    lines = [_TIMESTAMP.sub("", line).rstrip() for line in log.splitlines()]
-    lines = [line for line in lines if line.strip() and not line.startswith("##[group]")]
-    keep: list[int] = []
-    for index, line in enumerate(lines):
-        if _ERROR_LINE.search(line):
-            keep.extend(range(max(index - context, 0), min(index + context + 1, len(lines))))
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# The line a CI system prints when a step's command fails (Travis, GitHub Actions, GitLab, generic).
+_STEP_FAILED = re.compile(
+    r"(?i)(The command \".*\" exited with [1-9]|Process completed with exit code [1-9]|"
+    r"Job failed: exit code [1-9]|exited with (code )?[1-9]\d*\b)")
+_STEP_START = re.compile(r"^(\$ |##\[group\]Run |travis_fold:start)")
+# Failure wording that carries no "error" word: linter rule ids, Elixir throws, limits, TAP.
+_EXTRA_ERROR = re.compile(r"(?i)(\([\w@-]+/[\w-]+\)\s*$|^\*\* \(|exceed|violat|^not ok\b|✕)")
+
+
+def _is_error(line: str) -> bool:
+    return bool(_ERROR_LINE.search(line) or _EXTRA_ERROR.search(line))
+
+
+def extract_error_lines(log: str, max_lines: int = 40, context: int = 3) -> list[str]:
+    """The lines that say why a CI job failed.
+
+    Anchored on the failing step: the first "command exited with N" marker ends the step that
+    broke, so only that step's output is searched, and errors printed afterwards by cleanup or
+    upload hooks are ignored. The errors nearest the marker are kept, with context lines for
+    stack traces. Without a marker, the whole log is searched. Measured on the LogChunks
+    benchmark (docs/EVALUATION.md).
+    """
+    lines = [_ANSI.sub("", _TIMESTAMP.sub("", line)).rstrip() for line in log.replace("\r", "\n").splitlines()]
+    lines = [line for line in lines if line.strip()]
+    marker = next((index for index, line in enumerate(lines) if _STEP_FAILED.search(line)), None)
+    if marker is not None:
+        start = max((index for index in range(marker) if _STEP_START.search(lines[index])), default=0)
+        lines = lines[start:marker + 1]
+    errors = [index for index, line in enumerate(lines) if _is_error(line) and not _STEP_FAILED.search(line)]
+    if not errors:
+        errors = list(range(max(len(lines) - max_lines, 0), len(lines)))
+    keep = sorted({near for index in errors
+                   for near in range(max(index - context, 0), min(index + context + 1, len(lines)))})
     selected: list[str] = []
     seen: set[str] = set()
-    for index in sorted(set(keep)):
+    for index in keep:
+        if lines[index].startswith("##[group]") or lines[index].startswith("##[endgroup]"):
+            continue
         text = lines[index].replace("##[error]", "ERROR: ").strip()
         if text not in seen:
             seen.add(text)
             selected.append(text[:400])
-    if not selected:
-        selected = [line[:400] for line in lines[-max_lines:]]
-    # The last errors are usually the decisive ones (the summary and exit code).
+    # The errors nearest the failure are the decisive ones (the assertion, the summary).
     return selected[-max_lines:]
 
 

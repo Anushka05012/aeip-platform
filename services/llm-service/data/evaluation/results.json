@@ -143,7 +143,7 @@
     "id": "syntax-error-changed",
     "expected": "related",
     "predicted": "related",
-    "confidence": 0.6,
+    "confidence": 0.85,
     "category": "build / compile",
     "correct": true
    },
@@ -1567,6 +1567,80 @@
      "baseRate": 0.278
     }
    ]
+  }
+ },
+ "logchunks": {
+  "dataset": "LogChunks (MSR 2020)",
+  "repositories": 80,
+  "budget": 40,
+  "test": {
+   "aeip": {
+    "n": 347,
+    "lineRecall": 0.615,
+    "anyLineFound": 0.836,
+    "wholeChunkFound": 0.441,
+    "meanLinesShown": 25.9
+   },
+   "aeipPrevious": {
+    "n": 347,
+    "lineRecall": 0.466,
+    "anyLineFound": 0.726,
+    "wholeChunkFound": 0.274,
+    "meanLinesShown": 34.6
+   },
+   "tail40": {
+    "n": 347,
+    "lineRecall": 0.516,
+    "anyLineFound": 0.62,
+    "wholeChunkFound": 0.395,
+    "meanLinesShown": 40
+   }
+  },
+  "all": {
+   "aeip": {
+    "n": 797,
+    "lineRecall": 0.605,
+    "anyLineFound": 0.804,
+    "wholeChunkFound": 0.429,
+    "meanLinesShown": 26.7
+   },
+   "aeipPrevious": {
+    "n": 797,
+    "lineRecall": 0.442,
+    "anyLineFound": 0.711,
+    "wholeChunkFound": 0.267,
+    "meanLinesShown": 35.6
+   },
+   "tail40": {
+    "n": 797,
+    "lineRecall": 0.499,
+    "anyLineFound": 0.604,
+    "wholeChunkFound": 0.388,
+    "meanLinesShown": 40
+   }
+  },
+  "dev": {
+   "aeip": {
+    "n": 450,
+    "lineRecall": 0.597,
+    "anyLineFound": 0.78,
+    "wholeChunkFound": 0.42,
+    "meanLinesShown": 27.3
+   },
+   "aeipPrevious": {
+    "n": 450,
+    "lineRecall": 0.423,
+    "anyLineFound": 0.7,
+    "wholeChunkFound": 0.262,
+    "meanLinesShown": 36.4
+   },
+   "tail40": {
+    "n": 450,
+    "lineRecall": 0.486,
+    "anyLineFound": 0.591,
+    "wholeChunkFound": 0.382,
+    "meanLinesShown": 40
+   }
   }
  }
 }
