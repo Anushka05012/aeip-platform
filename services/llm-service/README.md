@@ -74,6 +74,32 @@ commit?" (`src/failure_analysis.py`, `POST /api/failures/explain`):
    disagree, confidence is capped, and anything under 0.6 is flagged for human review.
    Next steps are suggestions only; nothing is executed.
 
+## Operational events: deploys, app logs, databases, alerts
+
+AEIP lines up events from the rest of your tooling with commits and CI runs
+(`src/events.py`). Every source becomes one event shape (`source`, `kind`, `time`, `title`,
+`severity`, `service`, `environment`, `commit`, `files`, ...). Text is secret-redacted, repeated
+errors share a `fingerprint`, and file paths in stack traces are extracted so they can be
+matched to the commits that changed them.
+
+| Endpoint | Accepts |
+|---|---|
+| `POST /api/events?repository=owner/name` | generic event, list, or `{"events": [...]}` |
+| `POST /api/events/logs?repository=...&source=app\|database&service=...` | raw text or JSON-lines logs (stack traces grouped; Postgres deadlocks, connection exhaustion, slow queries, lock timeouts and migrations recognised) |
+| `POST /api/events/vercel` · `/render` · `/sentry` · `/github` · `/alertmanager` | the webhook payloads those tools already send |
+| `GET /api/events?repository=...&source=...` | stored events and counts per source |
+
+Set `AEIP_INGEST_KEY` to require a key on the ingest routes (`X-AEIP-Key` header, `Bearer`
+token, or `?key=` for webhook senders that cannot set headers). Events are stored in
+`data/cache/events/`. To send a file by hand:
+
+```bash
+python scripts/send_events.py --repository acme/shop --logs app.log --source app --service api
+python scripts/send_events.py --repository acme/shop --events alert.json --format alertmanager
+```
+
+The demo repository ships with two incidents' worth of events (`data/demo_events.json`).
+
 ## Run it locally
 
 Run the tests (fast, no API key required):

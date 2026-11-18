@@ -7,6 +7,7 @@ live demo) does not lose it.
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import threading
@@ -26,6 +27,7 @@ from .domain import RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
 from .embeddings import tokenize
 from .failure_analysis import FailureAnalyzer
+from .events import ADAPTERS, EventStore, make_event, parse_log_text
 from .flaky import detect_flaky
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
 from .pipeline import IntelligencePipeline
@@ -122,9 +124,58 @@ class IntelligenceDemoService:
         self.failure_analyzer = FailureAnalyzer()
         self.repositories: dict[str, AnalyzedRepository] = {}
         self._lock = threading.Lock()
+        self.events = EventStore(cache_dir / "events" if cache_dir else None)
+        self._load_demo_events()
         demo = JsonSeedDataSource(ROOT / "data" / "demo_repository.json").load_snapshot(DEMO_REPOSITORY)
         self._register(demo, "demo fixture", [], window=(START, NOW, 7))
         self._load_cache()
+
+    def _load_demo_events(self) -> None:
+        path = ROOT / "data" / "demo_events.json"
+        if not path.exists():
+            return
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        events = [make_event(item) for item in raw.get("events", [])]
+        for log in raw.get("logs", []):
+            events += parse_log_text(log["text"], log["source"], log.get("service", ""), log.get("environment", ""))
+        self.events.add(DEMO_REPOSITORY, events, persist=False)
+
+    # -- operational events (deploys, app logs, databases, alerts) -------------
+    def ingest_events(self, repository: str, payload: Any, adapter: str = "generic") -> dict[str, Any]:
+        repository = parse_repository(repository)
+        if adapter == "generic":
+            items = payload.get("events", [payload]) if isinstance(payload, dict) else payload
+            if not isinstance(items, list) or not items:
+                raise ValueError('Send an event object, a list of events, or {"events": [...]}.')
+            if len(items) > 1000:
+                raise ValueError("At most 1000 events per request.")
+            events = [make_event(item) for item in items]
+        elif adapter in ADAPTERS:
+            if not isinstance(payload, dict):
+                raise ValueError(f"A {adapter} webhook payload must be a JSON object.")
+            events = ADAPTERS[adapter](payload)
+        else:
+            raise ValueError(f"Unknown event format {adapter!r}; use generic, logs or {', '.join(sorted(ADAPTERS))}.")
+        added = self.events.add(repository, events)
+        return {"repository": repository, "received": len(events), "added": added}
+
+    def ingest_logs(self, repository: str, text: str, source: str = "app", service: str = "",
+                    environment: str = "", min_severity: str = "warning") -> dict[str, Any]:
+        repository = parse_repository(repository)
+        if not text.strip():
+            raise ValueError("Log text is empty.")
+        events = parse_log_text(text, source, service, environment, datetime.now().astimezone(), min_severity)
+        added = self.events.add(repository, events)
+        return {"repository": repository, "received": len(events), "added": added}
+
+    def list_events(self, repository: str | None = None, source: str | None = None, limit: int = 500) -> dict[str, Any]:
+        name = repository or DEMO_REPOSITORY
+        events = [item for item in self.events.list(name) if not source or item.source == source]
+        counts: dict[str, int] = {}
+        for item in events:
+            counts[item.source] = counts.get(item.source, 0) + 1
+        return {"repository": name, "total": len(events), "bySource": counts,
+                "events": [item.to_json() for item in events[-max(1, min(limit, 5000)):]]}
 
     # -- repository registry ---------------------------------------------------
     def _load_cache(self) -> None:
@@ -381,18 +432,32 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         self.send_header("Access-Control-Allow-Origin", origin if origin in ALLOWED_ORIGINS else "http://localhost:3000")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-AEIP-Key")
         self.end_headers()
         self.wfile.write(encoded)
 
-    def _read_body(self) -> dict[str, Any]:
+    def _read_raw(self, limit: int) -> bytes:
         content_length = int(self.headers.get("Content-Length", "0"))
-        if content_length > 10_000:
+        if content_length > limit:
             raise ValueError("Request body is too large.")
-        body = json.loads(self.rfile.read(content_length) or b"{}")
-        if not isinstance(body, dict):
+        return self.rfile.read(content_length)
+
+    def _read_body(self, limit: int = 10_000, allow_list: bool = False) -> Any:
+        body = json.loads(self._read_raw(limit) or b"{}")
+        if not isinstance(body, dict) and not (allow_list and isinstance(body, list)):
             raise ValueError("Request body must be an object.")
         return body
+
+    def _ingest_authorized(self, query: dict[str, list[str]]) -> bool:
+        """Ingest routes accept writes from outside tools. When AEIP_INGEST_KEY is set, require it
+        (X-AEIP-Key header, Bearer token, or ?key= for tools that cannot set headers)."""
+        expected = os.environ.get("AEIP_INGEST_KEY", "")
+        if not expected:
+            return True
+        auth = self.headers.get("Authorization", "")
+        supplied = (self.headers.get("X-AEIP-Key") or (auth[7:] if auth.lower().startswith("bearer ") else "")
+                    or query.get("key", [""])[0])
+        return hmac.compare_digest(supplied.encode(), expected.encode())
 
     def _handle(self, action: Callable[[], dict[str, Any]]) -> None:
         try:
@@ -420,12 +485,42 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._handle(lambda: self.service.overview(repository))
         elif url.path == "/api/repositories":
             self._handle(self.service.list_repositories)
+        elif url.path == "/api/events":
+            query = parse_qs(url.query)
+            self._handle(lambda: self.service.list_events(repository, query.get("source", [None])[0],
+                                                          int(query.get("limit", ["500"])[0])))
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
 
     def do_POST(self) -> None:  # noqa: N802 - inherited HTTP method name
-        path = urlparse(self.path).path
-        if path == "/api/assistant":
+        url = urlparse(self.path)
+        path, query = url.path, parse_qs(url.query)
+        if path.startswith("/api/events"):
+            if not self._ingest_authorized(query):
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Missing or wrong ingest key (AEIP_INGEST_KEY)."})
+                return
+            fmt = path[len("/api/events"):].strip("/") or "generic"
+            repository = query.get("repository", [""])[0]
+
+            def ingest() -> dict[str, Any]:
+                if fmt == "logs":
+                    raw = self._read_raw(5_000_000)
+                    if "json" in self.headers.get("Content-Type", ""):
+                        body = json.loads(raw or b"{}")
+                        return self.service.ingest_logs(body.get("repository") or repository, str(body.get("text", "")),
+                                                        body.get("source", "app"), body.get("service", ""),
+                                                        body.get("environment", ""), body.get("minSeverity", "warning"))
+                    return self.service.ingest_logs(repository, raw.decode("utf-8", errors="replace"),
+                                                    query.get("source", ["app"])[0], query.get("service", [""])[0],
+                                                    query.get("environment", [""])[0],
+                                                    query.get("minSeverity", ["warning"])[0])
+                body = self._read_body(2_000_000, allow_list=True)
+                target = repository or (body.get("repository", "") if isinstance(body, dict) and fmt == "generic" else "")
+                if not target:
+                    raise ValueError("Say which repository these events belong to: ?repository=owner/name")
+                return self.service.ingest_events(target, body, fmt)
+            self._handle(ingest)
+        elif path == "/api/assistant":
             def ask() -> dict[str, Any]:
                 body = self._read_body()
                 return self.service.ask(str(body.get("question", "")), bool(body.get("useAi", True)),
