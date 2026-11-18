@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .domain import EmbeddingProvider, VectorRecord
-from .embeddings import InMemoryVectorStore, tokenize
+from .embeddings import tokenize
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class RetrievedEvidence:
 
 
 class RepositoryRetriever:
-    def __init__(self, embedder: EmbeddingProvider, store: InMemoryVectorStore):
+    def __init__(self, embedder: EmbeddingProvider, store: object):
         self.embedder = embedder
         self.store = store
 

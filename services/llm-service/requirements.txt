@@ -5,3 +5,5 @@ pydantic>=2.7.0
 tenacity>=8.3.0
 pytest>=8.2.0
 psutil>=5.9  # scripts/measure_environment.py
+fastembed>=0.7  # local semantic embeddings (bge-small, ONNX); optional, falls back to hashing
+psycopg[binary]>=3.2  # pgvector store when AEIP_VECTOR_STORE=pgvector

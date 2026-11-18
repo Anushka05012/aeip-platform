@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, urlparse
 from .assistant import RepositoryAssistant
 from .domain import RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
-from .embeddings import tokenize
+from .embeddings import make_embedder, tokenize
 from .failure_analysis import FailureAnalyzer
 from .events import ADAPTERS, EventStore, make_event, parse_log_text
 from .flaky import detect_flaky
@@ -136,6 +136,7 @@ class IntelligenceDemoService:
         self.cache_dir = cache_dir
         self.github_factory = github_factory
         self.database_sync = database_sync
+        self.embedder, self.embedder_note = make_embedder(cache_dir)
         self.assistant = RepositoryAssistant()
         self.failure_analyzer = FailureAnalyzer()
         self.repositories: dict[str, AnalyzedRepository] = {}
@@ -233,10 +234,12 @@ class IntelligenceDemoService:
                   window: tuple[datetime, datetime, int] | None = None,
                   analyzed_at: str | None = None) -> AnalyzedRepository:
         stages = list(stages)
-        pipeline = IntelligencePipeline()
+        pipeline = IntelligencePipeline(snapshot.repository, self.embedder, self.embedder_note)
         started = time.perf_counter()
         indexed = pipeline.prepare(snapshot)
-        stages.append({"stage": "Embedding + vector index", "detail": f"{indexed} chunks embedded for hybrid retrieval",
+        stages = [stage for stage in stages if stage.get("stage") != "Embedding + vector index"]
+        stages.append({"stage": "Embedding + vector index",
+                       "detail": f"{indexed} chunks embedded for hybrid retrieval · {pipeline.index_description}",
                        "ms": round((time.perf_counter() - started) * 1000)})
 
         # DORA counts push-triggered CI runs on the default branch as deployments; PR and
