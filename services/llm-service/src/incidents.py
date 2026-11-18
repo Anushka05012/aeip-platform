@@ -218,7 +218,11 @@ def _score(candidate: Candidate, start: datetime, signals: Sequence[TimelineItem
     error_files = {path for item in signals for path in item.files}
     overlap = sorted({changed for changed in candidate.files for seen in error_files if _paths_match(changed, seen)})
     if error_files:
-        candidate.scores["files"] = min(len(overlap) / max(min(len(error_files), 3), 1), 1.0)
+        # Weight by how many error traces contain the file: the culprit sits in (nearly) every trace,
+        # a file that shows up in one stray trace is coincidence.
+        traced = [item for item in signals if item.files]
+        candidate.scores["files"] = max((sum(1 for item in traced if any(_paths_match(path, seen) for seen in item.files))
+                                         / len(traced) for path in overlap), default=0.0)
         candidate.implicated = overlap
         if overlap:
             hits = sum(1 for item in signals if any(_paths_match(path, seen) for path in overlap for seen in item.files))

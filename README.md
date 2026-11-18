@@ -77,6 +77,12 @@ npx prisma generate
 npx tsx ingestion/webhook-listener.ts
 ```
 
+## Evaluation
+
+Measured results (CI verdicts, incident root cause, retrieval on a real repository, risk vs later bug
+fixes on real history) are in [docs/EVALUATION.md](docs/EVALUATION.md). Reproduce them with
+`python services/llm-service/scripts/evaluate.py --repos <folder with clones of pallets/click and psf/black>`.
+
 ## Run the tests
 
 ```bash

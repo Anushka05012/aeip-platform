@@ -21,6 +21,12 @@ from typing import Any, Sequence
 
 from .domain import Commit, Deployment, PullRequest
 from .flaky import passing_runs_on_same_commit
+
+
+def is_dependency_file(path: str) -> bool:
+    from .github_source import is_dependency_file as check  # local import: github_source imports chunker only
+
+    return check(path)
 from .rag import RepositoryRetriever
 from .risk_engine import RiskResult
 from .risk_summary import ChatClient
@@ -45,7 +51,8 @@ _ERROR_LINE = re.compile(
 
 CATEGORIES: list[tuple[str, re.Pattern[str]]] = [
     ("infrastructure / flaky", re.compile(
-        r"(?i)(timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|rate limit|HTTP (429|502|503|504)|"
+        r"(?i)(timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|connection refused|could not connect to server|"
+        r"rate limit|HTTP (429|502|503|504)|"
         r"could not resolve host|temporary failure in name resolution|no space left on device|"
         r"runner .*(lost|shutdown)|the operation was canceled|service unavailable|network is unreachable|"
         r"secondary rate limit|resource not accessible by integration)")),
@@ -237,9 +244,14 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
     text = "\n".join(evidence.error_lines + [f"step {job['failedSteps']}" for job in evidence.failed_jobs])
     category = classify(text)
     mentioned = files_mentioned(text, evidence.changed_files)
-    source_changed = [path for path in evidence.changed_files if not path.endswith((".md", ".rst", ".txt"))]
+    dependency_changed = [path for path in evidence.changed_files if is_dependency_file(path)]
+    # requirements.txt is a dependency manifest, not documentation.
+    source_changed = [path for path in evidence.changed_files
+                      if not path.endswith((".md", ".rst", ".txt")) or path in dependency_changed]
     config_changed = [path for path in evidence.changed_files if is_config_file(path)]
     signals: list[str] = []
+    if category == "dependency / install" and dependency_changed:
+        signals.append(f"Dependency install failed right after the commit changed {', '.join(dependency_changed)}")
 
     if mentioned:
         signals.append(f"Error output mentions files changed by the triggering commit: {', '.join(mentioned)}")
@@ -275,6 +287,8 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
         verdict, confidence = ("uncertain", 0.5) if mentioned else ("unrelated", 0.75)
     elif mentioned:
         verdict, confidence = "related", 0.85
+    elif category == "dependency / install" and dependency_changed:
+        verdict, confidence = "related", 0.75
     elif category in ("infrastructure / flaky", "environment / setup", "docker / container") and config_changed:
         verdict, confidence = "related", 0.65
     elif category == "infrastructure / flaky":
