@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from .dora import DoraMetrics, calculate_dora
-from .embeddings import EmbeddingWorker, HashingEmbedder, InMemoryVectorStore
+from .embeddings import EmbeddingWorker, make_embedder
+from .vector_store import make_vector_store
 from .rag import RepositoryRetriever, RetrievedEvidence
 from .risk_engine import RiskEngine, RiskResult
 from .risk_summary import ChatClient, RiskSummaryEngine
@@ -13,9 +14,13 @@ from .domain import RepositorySnapshot
 
 
 class IntelligencePipeline:
-    def __init__(self) -> None:
-        self.embedder = HashingEmbedder()
-        self.store = InMemoryVectorStore()
+    def __init__(self, repository: str = "", embedder: object | None = None, embedder_note: str = "") -> None:
+        if embedder is None:
+            embedder, embedder_note = make_embedder()
+        self.embedder = embedder
+        model = getattr(embedder, "name", "hashing")
+        self.store, store_note = make_vector_store(repository or "local", model, getattr(embedder, "dimensions", 1024))
+        self.index_description = f"{embedder_note or model} · {store_note}"
         self.worker = EmbeddingWorker(self.embedder, self.store)
         self.retriever = RepositoryRetriever(self.embedder, self.store)
         self.risk_engine = RiskEngine()

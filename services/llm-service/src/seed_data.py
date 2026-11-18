@@ -31,6 +31,7 @@ def snapshot_from_json(raw: dict[str, Any]) -> RepositorySnapshot:
             deletions=item["deletions"],
             complexity_delta=item.get("complexity_delta", 0),
             message=item.get("message", ""),
+            dependency_files=tuple(item.get("dependency_files", ())),
         )
         for item in raw["commits"]
     )
@@ -64,6 +65,7 @@ def snapshot_to_json(snapshot: RepositorySnapshot) -> dict[str, Any]:
                 "sha": item.sha, "authored_at": item.authored_at.isoformat(), "files": list(item.files),
                 "additions": item.additions, "deletions": item.deletions,
                 "complexity_delta": item.complexity_delta, "message": item.message,
+                "dependency_files": list(item.dependency_files),
             }
             for item in snapshot.commits
         ],

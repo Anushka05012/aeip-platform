@@ -16,6 +16,7 @@ class Commit:
     deletions: int
     complexity_delta: int = 0
     message: str = ""
+    dependency_files: tuple[str, ...] = ()  # manifests/lockfiles changed (kept out of churn)
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,11 @@ export type DeployPoint = { d: string; v: number };
 export type RiskItem = {
   file: string; score: number; reason: string;
   level?: string; changes?: number; churn?: number; complexity?: number;
+  hasTests?: boolean; testTouchRatio?: number; dependents?: number; dependencyChanges?: number;
+  breakdown?: RiskBreakdown;
+};
+export type RiskBreakdown = {
+  frequency: number; churn: number; complexity: number; testGap: number; blastRadius: number; dependencies: number;
 };
 export type Failure = {
   id: string; commit: string; workflow: string; event: string;
@@ -67,6 +72,7 @@ export type IntelligenceOverview = {
   riskItems: RiskItem[];
   failures: Failure[];
   flaky?: FlakyWorkflow[];
+  incidents?: IncidentSummary[];
   summary: string;
   windowDays: number;
   evidence: Evidence[];
@@ -94,4 +100,30 @@ export type IngestResult = {
   repositoryId: string;
   commitsIngested: number;
   pullRequestsIngested: number;
+};
+export type RootCause = {
+  kind: "deploy" | "migration" | "config" | "commit";
+  title: string; time: string; ref: string; service: string;
+  score: number; confidence: "likely" | "possible" | "weak";
+  signals: Partial<Record<"files" | "timing" | "recovery" | "type" | "service" | "risk", number>>;
+  evidence: string[];
+  commits: { sha: string; message: string; files: string[] }[];
+  files: string[];
+  rolledBackAt: string | null;
+};
+
+export type IncidentSummary = {
+  id: string; title: string; start: string; end: string; durationMinutes: number;
+  status: "resolved" | "ongoing"; severity: string; services: string[]; sources: string[];
+  errorCount: number; distinctErrors: number; rootCause: RootCause | null;
+};
+
+export type TimelineEntry = {
+  time: string; source: string; kind: string; title: string; severity: string; service: string;
+  environment: string; commit: string; files: string[]; fingerprint: string; ref: string; url: string; message: string;
+};
+
+export type IncidentDetail = IncidentSummary & {
+  candidates: RootCause[]; timeline: TimelineEntry[]; narrative: string; nextSteps: string[];
+  narrativeMode: "rules" | "groq";
 };

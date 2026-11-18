@@ -58,6 +58,19 @@ def parse_repository(value: str) -> str:
     return repository
 
 
+DEPENDENCY_FILES = {
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "requirements.txt", "pyproject.toml",
+    "poetry.lock", "pipfile", "pipfile.lock", "setup.py", "setup.cfg", "go.mod", "go.sum", "cargo.toml",
+    "cargo.lock", "pom.xml", "build.gradle", "build.gradle.kts", "gemfile", "gemfile.lock", "composer.json",
+    "composer.lock", "uv.lock",
+}
+
+
+def is_dependency_file(path: str) -> bool:
+    name = PurePosixPath(path).name.lower()
+    return name in DEPENDENCY_FILES or (name.startswith("requirements") and name.endswith(".txt"))
+
+
 def is_analyzable(path: str) -> bool:
     pure = PurePosixPath(path)
     if any(part in IGNORED_DIRS for part in pure.parts[:-1]) or pure.name in IGNORED_FILES:
@@ -239,6 +252,8 @@ class GitHubDataSource:
             deletions=sum(entry.get("deletions", 0) for entry in files),
             complexity_delta=max(sum(complexity_delta(entry.get("patch", "")) for entry in files), 0),
             message=detail["commit"]["message"].strip(),
+            dependency_files=tuple(entry["filename"] for entry in detail.get("files", [])
+                                   if is_dependency_file(entry["filename"])),
         )
 
     def fetch_commit(self, repository: str, sha: str) -> Commit:

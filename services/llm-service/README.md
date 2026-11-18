@@ -74,6 +74,51 @@ commit?" (`src/failure_analysis.py`, `POST /api/failures/explain`):
    disagree, confidence is capped, and anything under 0.6 is flagged for human review.
    Next steps are suggestions only; nothing is executed.
 
+## Retrieval: semantic embeddings and pgvector
+
+Ask-the-codebase and failure analysis retrieve code with hybrid search: 55% semantic
+similarity, 30% keyword overlap, 15% file-path match (`src/rag.py`).
+
+- **Embeddings** (`src/embeddings.py`): by default a local sentence-embedding model,
+  `BAAI/bge-small-en-v1.5` (384-d, ONNX via fastembed, ~130 MB downloaded once), so a question
+  finds code by meaning ("where do we bill the card?" finds `process_payment`). It runs on the
+  machine; code is never sent to an embedding API. Embeddings are cached in SQLite
+  (`data/cache/embeddings.sqlite`), so only changed chunks are re-embedded. Without fastembed, or
+  with `AEIP_EMBEDDINGS=hashing`, AEIP uses dependency-free hashed keyword vectors.
+- **Vector store** (`src/vector_store.py`): in memory by default; with
+  `AEIP_VECTOR_STORE=pgvector` and `DATABASE_URL`, chunks persist in PostgreSQL + pgvector
+  (HNSW cosine index, one row set per repository and model, in an `aeip` schema that Prisma does
+  not manage). Supabase includes pgvector.
+
+The integration test runs against any pgvector database:
+`AEIP_TEST_DATABASE_URL=postgresql://... python -m pytest tests -k pgvector`.
+
+## Operational events: deploys, app logs, databases, alerts
+
+AEIP lines up events from the rest of your tooling with commits and CI runs
+(`src/events.py`). Every source becomes one event shape (`source`, `kind`, `time`, `title`,
+`severity`, `service`, `environment`, `commit`, `files`, ...). Text is secret-redacted, repeated
+errors share a `fingerprint`, and file paths in stack traces are extracted so they can be
+matched to the commits that changed them.
+
+| Endpoint | Accepts |
+|---|---|
+| `POST /api/events?repository=owner/name` | generic event, list, or `{"events": [...]}` |
+| `POST /api/events/logs?repository=...&source=app\|database&service=...` | raw text or JSON-lines logs (stack traces grouped; Postgres deadlocks, connection exhaustion, slow queries, lock timeouts and migrations recognised) |
+| `POST /api/events/vercel` · `/render` · `/sentry` · `/github` · `/alertmanager` | the webhook payloads those tools already send |
+| `GET /api/events?repository=...&source=...` | stored events and counts per source |
+
+Set `AEIP_INGEST_KEY` to require a key on the ingest routes (`X-AEIP-Key` header, `Bearer`
+token, or `?key=` for webhook senders that cannot set headers). Events are stored in
+`data/cache/events/`. To send a file by hand:
+
+```bash
+python scripts/send_events.py --repository acme/shop --logs app.log --source app --service api
+python scripts/send_events.py --repository acme/shop --events alert.json --format alertmanager
+```
+
+The demo repository ships with two incidents' worth of events (`data/demo_events.json`).
+
 ## Run it locally
 
 Run the tests (fast, no API key required):

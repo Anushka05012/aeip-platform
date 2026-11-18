@@ -1,0 +1,47 @@
+# Render blueprint: the intelligence API and the ingestion service as Docker web services.
+# Render dashboard > New > Blueprint > pick this repository. Values marked sync: false are asked for once.
+# The dashboard (frontend/) deploys to Vercel and the database is Supabase; see docs/DEPLOYMENT.md.
+services:
+  - type: web
+    name: aeip-intelligence
+    runtime: docker
+    dockerContext: ./services/llm-service
+    dockerfilePath: ./services/llm-service/Dockerfile
+    plan: starter # the embedding model needs ~1 GB RAM; on free plans set AEIP_EMBEDDINGS=hashing
+    healthCheckPath: /health
+    envVars:
+      - key: AEIP_HOST
+        value: 0.0.0.0
+      - key: AEIP_VECTOR_STORE
+        value: pgvector
+      - key: DATABASE_URL # Supabase connection string (session pooler, port 5432)
+        sync: false
+      - key: AEIP_SERVICE_TOKEN # same value as in the Vercel project
+        sync: false
+      - key: AEIP_INGEST_KEY
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: INGESTION_API_URL
+        fromService:
+          type: web
+          name: aeip-ingestion
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: aeip-ingestion
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./ingestion/Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL # Supabase session pooler URL (Prisma migrations need a session connection)
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        generateValue: true
+      - key: AEIP_ALLOWED_ORIGINS # the Vercel dashboard URL, e.g. https://aeip.vercel.app
+        sync: false

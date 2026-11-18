@@ -6,7 +6,8 @@ import StatStrip from "@/components/dashboard/MetricCard";
 import DeployChart from "@/components/dashboard/DeployChart";
 import RiskList from "@/components/dashboard/RiskList";
 import FailuresFeed from "@/components/dashboard/FailuresFeed";
-import { Empty, Notice, PageHeader, Panel } from "@/components/ui";
+import { Badge, Empty, Notice, PageHeader, Panel } from "@/components/ui";
+import { formatDuration, utcTime } from "@/lib/format";
 import { getOverview } from "@/lib/intelligenceApi";
 import { IntelligenceOverview } from "@/types";
 
@@ -27,6 +28,21 @@ export default function OverviewPage() {
     />
 
     <StatStrip metrics={data.metrics} />
+
+    {!!data.incidents?.length && <Panel flush title="Recent incidents" aside={<Link className={more} href="/incidents">Timeline and root cause</Link>}>
+      <ul className="divide-y divide-line">
+        {data.incidents.slice(0, 3).map((item) => <li key={item.id}>
+          <Link href={`/incidents?id=${item.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-paper flex-wrap">
+            <Badge tone={item.status === "ongoing" ? "bad" : "good"}>{item.status}</Badge>
+            <span className="text-[13.5px] font-medium text-ink">{item.title}</span>
+            <span className="text-[12px] text-muted">{utcTime(item.start, true)} UTC · {formatDuration(item.durationMinutes)}</span>
+            {item.rootCause && <span className="text-[12.5px] text-ink-2 ml-auto">
+              <span className="text-muted">Cause:</span> {item.rootCause.title} <span className="text-muted">({item.rootCause.confidence})</span>
+            </span>}
+          </Link>
+        </li>)}
+      </ul>
+    </Panel>}
 
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <Panel className="lg:col-span-3" title="CI runs per day" aside="default branch, push-triggered">

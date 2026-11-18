@@ -1,6 +1,7 @@
 import { Failure } from "@/types";
 import { relativeTime, shortSha } from "@/lib/format";
 import { Badge, Button, td, th } from "@/components/ui";
+import { useSession } from "@/lib/useSession";
 
 type Props = { items: Failure[]; onExplain?: (failure: Failure) => void; selectedId?: string; loadingId?: string };
 
@@ -9,6 +10,7 @@ function workflowOf(failure: Failure) {
 }
 
 export default function FailuresFeed({ items, onExplain, selectedId, loadingId }: Props) {
+    const { can } = useSession();
     return (
         <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13px]">
@@ -39,7 +41,8 @@ export default function FailuresFeed({ items, onExplain, selectedId, loadingId }
                                 <td className={`${td} font-mono text-[12.5px] text-ink-2 max-w-[160px] truncate`} title={f.branch}>{f.branch}</td>
                                 <td className={`${td} text-ink-2 whitespace-nowrap`} title={f.time}>{relativeTime(f.time)}</td>
                                 {onExplain && <td className={`${td} text-right`}>
-                                    <Button variant={selected ? "primary" : "secondary"} disabled={!!loadingId} onClick={() => onExplain(f)}>
+                                    <Button variant={selected ? "primary" : "secondary"} disabled={!!loadingId || !can("member")} onClick={() => onExplain(f)}
+                                        title={can("member") ? undefined : "Your role is viewer: ask an admin for member access to run this."}>
                                         {loadingId === f.id ? "Analysing…" : "Explain"}
                                     </Button>
                                 </td>}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { analyzeRepository, listRepositories, setActiveRepository } from "@/lib/intelligenceApi";
 import { listRepositories as listStoredRepositories } from "@/lib/ingestionApi";
 import { useActiveRepository } from "@/lib/useActiveRepository";
+import { useSession } from "@/lib/useSession";
 import { formatMs, relativeTime } from "@/lib/format";
 import { Badge, Button, Notice, PageHeader, Panel, td, th } from "@/components/ui";
 import { Repository, RepositorySummary } from "@/types";
@@ -43,6 +44,7 @@ function DatabaseCell({ stored, repository }: { stored: Stored; repository: stri
 
 export default function RepositoriesPage() {
   const router = useRouter();
+  const { can } = useSession();
   const [input, setInput] = useState("");
   const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
   const active = useActiveRepository();
@@ -99,7 +101,8 @@ export default function RepositoriesPage() {
       <form className="flex gap-2 flex-wrap" onSubmit={(event) => { event.preventDefault(); analyze(input); }}>
         <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="owner/repo or https://github.com/owner/repo" spellCheck={false}
           className="flex-1 min-w-60 h-9 px-3 bg-panel border border-line-strong rounded-[5px] font-mono text-[13px] text-ink placeholder:font-sans placeholder:text-muted outline-none focus:border-accent" />
-        <Button type="submit" variant="primary" className="h-9" disabled={!!running || !input.trim()}>
+        <Button type="submit" variant="primary" className="h-9" disabled={!!running || !input.trim() || !can("member")}
+          title={can("member") ? undefined : "Your role is viewer: ask an admin for member access to run this."}>
           {running ? "Analysing…" : "Analyse"}
         </Button>
       </form>
@@ -155,7 +158,7 @@ export default function RepositoriesPage() {
                 <div className="inline-flex gap-1.5">
                   {!isActive(repo) && <Button onClick={() => open(repo.repository)}>Open</Button>}
                   {isActive(repo) && <Button variant="ghost" onClick={() => router.push("/")}>View</Button>}
-                  {repo.source !== "demo fixture" && <Button variant="ghost" disabled={!!running} onClick={() => analyze(repo.repository, true)}>
+                  {repo.source !== "demo fixture" && <Button variant="ghost" disabled={!!running || !can("member")} onClick={() => analyze(repo.repository, true)}>
                     {running === repo.repository ? "Fetching…" : "Re-fetch"}
                   </Button>}
                 </div>

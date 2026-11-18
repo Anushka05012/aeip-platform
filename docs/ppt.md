@@ -114,8 +114,8 @@ marked as an FF 180 assumption or a plan.
 | PostgreSQL storage | Commits and PRs stored via the ingestion service (Prisma) | ✅ integrated |
 | Safety controls | Secrets hidden, low confidence flagged, human approval | ✅ |
 | Light and dark themes | Readable on screens and projectors | ✅ |
-| Database, deploy and app log connectors; incident timeline | Root cause across *all* tools | 🔜 end-sem |
-| Login and roles | Secure multi-user access | 🔜 end-sem |
+| Deploy, app, database and alert connectors; incident timeline | Root cause across *all* tools, ranked with evidence | ✅ |
+| Login and roles | GitHub sign-in; viewer / member / admin; audit log | ✅ |
 
 ---
 

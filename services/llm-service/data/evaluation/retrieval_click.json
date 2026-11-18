@@ -1,0 +1,33 @@
+{
+  "description": "Code retrieval benchmark on the real pallets/click source at tag 8.1.7 (src/click only). Each question lists the files that implement the answer; labels were checked against the source with git grep for the implementing class or function.",
+  "repository": "pallets/click",
+  "ref": "8.1.7",
+  "include_prefix": "src/click/",
+  "questions": [
+    {"q": "How are command line arguments split and matched against the declared options?", "relevant": ["src/click/parser.py"]},
+    {"q": "Where is tab completion for bash and zsh generated?", "relevant": ["src/click/shell_completion.py"]},
+    {"q": "How do I invoke a command in a unit test and capture what it printed?", "relevant": ["src/click/testing.py"]},
+    {"q": "Where is the progress bar drawn while iterating over items?", "relevant": ["src/click/_termui_impl.py", "src/click/termui.py"]},
+    {"q": "How does the tool ask the user a yes or no question?", "relevant": ["src/click/termui.py"]},
+    {"q": "What error is raised when a parameter gets an invalid value?", "relevant": ["src/click/exceptions.py"]},
+    {"q": "How is help text wrapped and indented to fit the terminal?", "relevant": ["src/click/formatting.py", "src/click/_textwrap.py"]},
+    {"q": "How do I require that a file path argument exists and is readable?", "relevant": ["src/click/types.py"]},
+    {"q": "How does decorating a function turn it into a command?", "relevant": ["src/click/decorators.py", "src/click/core.py"]},
+    {"q": "How can code anywhere get hold of the currently running context?", "relevant": ["src/click/globals.py"]},
+    {"q": "Where are the Windows console unicode output problems worked around?", "relevant": ["src/click/_winconsole.py", "src/click/_compat.py"]},
+    {"q": "How is a file opened only when it is first written to?", "relevant": ["src/click/utils.py"]},
+    {"q": "How can option values come from environment variables automatically?", "relevant": ["src/click/core.py"]},
+    {"q": "How does a group find and run the subcommand the user typed?", "relevant": ["src/click/core.py"]},
+    {"q": "Where is long output sent through a pager like less?", "relevant": ["src/click/_termui_impl.py", "src/click/termui.py"]},
+    {"q": "How does it open the user's text editor to edit a message?", "relevant": ["src/click/_termui_impl.py", "src/click/termui.py"]},
+    {"q": "How do I restrict a value to one of a fixed list of allowed strings?", "relevant": ["src/click/types.py"]},
+    {"q": "How do I print coloured or bold text in the terminal?", "relevant": ["src/click/termui.py"]},
+    {"q": "Where is the flag that prints the program's version and exits defined?", "relevant": ["src/click/decorators.py"]},
+    {"q": "How does it tell binary streams apart from text streams?", "relevant": ["src/click/_compat.py"]},
+    {"q": "How are numbers checked to be within a minimum and maximum?", "relevant": ["src/click/types.py"]},
+    {"q": "What function should I use instead of print to write output safely?", "relevant": ["src/click/utils.py", "src/click/termui.py"]},
+    {"q": "How are default values displayed in the generated help page?", "relevant": ["src/click/core.py"]},
+    {"q": "How is a password read from the user without echoing it?", "relevant": ["src/click/termui.py", "src/click/core.py"]},
+    {"q": "What happens when the user presses Ctrl+C while a command runs?", "relevant": ["src/click/core.py", "src/click/exceptions.py", "src/click/termui.py"]}
+  ]
+}

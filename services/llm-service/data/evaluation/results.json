@@ -1,0 +1,1572 @@
+{
+ "date": "2026-11-18",
+ "verdicts": {
+  "accuracy": 0.974,
+  "macroF1": 0.962,
+  "perClass": {
+   "related": {
+    "precision": 0.952,
+    "recall": 1.0,
+    "f1": 0.976,
+    "support": 20
+   },
+   "unrelated": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "support": 13
+   },
+   "uncertain": {
+    "precision": 1.0,
+    "recall": 0.833,
+    "f1": 0.909,
+    "support": 6
+   }
+  },
+  "confusion": {
+   "related": {
+    "related": 20,
+    "unrelated": 0,
+    "uncertain": 0
+   },
+   "unrelated": {
+    "related": 0,
+    "unrelated": 13,
+    "uncertain": 0
+   },
+   "uncertain": {
+    "related": 1,
+    "unrelated": 0,
+    "uncertain": 5
+   }
+  },
+  "cases": 39,
+  "harmfulFlips": [],
+  "rows": [
+   {
+    "id": "payflow-c4",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "payflow-c6",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "payflow-c12",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.8,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "payflow-pr-refunds",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "py-assert-changed-module",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "jest-changed-component",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.6,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "tsc-error-changed-file",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "lint / type check",
+    "correct": true
+   },
+   {
+    "id": "eslint-changed-file",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "lint / type check",
+    "correct": true
+   },
+   {
+    "id": "go-build-changed-file",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "java-compile-changed",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "rust-compile-changed",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "build / compile",
+    "correct": true
+   },
+   {
+    "id": "mypy-changed",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "syntax-error-changed",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.6,
+    "category": "build / compile",
+    "correct": true
+   },
+   {
+    "id": "npm-network-docs-only",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.8,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "pip-timeout-docs-only",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.8,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "rate-limit-docs",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.8,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "runner-lost",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.7,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "disk-full",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.7,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "scheduled-nightly",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.7,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "service-unavailable-docs",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.8,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "flaky-same-commit-passed",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.75,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "flaky-timeout-same-commit",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.75,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "docs-only-test-failure",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.55,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "dep-bump-resolution",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.75,
+    "category": "dependency / install",
+    "correct": true
+   },
+   {
+    "id": "requirements-pin-missing",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.75,
+    "category": "dependency / install",
+    "correct": true
+   },
+   {
+    "id": "dockerfile-changed",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.65,
+    "category": "docker / container",
+    "correct": true
+   },
+   {
+    "id": "workflow-changed-missing-tool",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.65,
+    "category": "environment / setup",
+    "correct": true
+   },
+   {
+    "id": "config-changed-connection-refused",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.65,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "missing-tool-unrelated-change",
+    "expected": "uncertain",
+    "predicted": "uncertain",
+    "confidence": 0.4,
+    "category": "environment / setup",
+    "correct": true
+   },
+   {
+    "id": "docker-registry-down-code-change",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.7,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "test-fails-unchanged-module",
+    "expected": "uncertain",
+    "predicted": "related",
+    "confidence": 0.6,
+    "category": "test failure",
+    "correct": false
+   },
+   {
+    "id": "lint-new-rule-unchanged-file",
+    "expected": "uncertain",
+    "predicted": "uncertain",
+    "confidence": 0.4,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "no-log-available",
+    "expected": "uncertain",
+    "predicted": "uncertain",
+    "confidence": 0.35,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "commit-unknown",
+    "expected": "uncertain",
+    "predicted": "uncertain",
+    "confidence": 0.35,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "segfault-native",
+    "expected": "uncertain",
+    "predicted": "uncertain",
+    "confidence": 0.4,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "test-names-changed-test-file",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "test failure",
+    "correct": true
+   },
+   {
+    "id": "migration-test-changed",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "unknown",
+    "correct": true
+   },
+   {
+    "id": "oom-killed-code-change",
+    "expected": "unrelated",
+    "predicted": "unrelated",
+    "confidence": 0.7,
+    "category": "infrastructure / flaky",
+    "correct": true
+   },
+   {
+    "id": "timeout-with-changed-file-in-trace",
+    "expected": "related",
+    "predicted": "related",
+    "confidence": 0.85,
+    "category": "infrastructure / flaky",
+    "correct": true
+   }
+  ]
+ },
+ "incidents": {
+  "overall": {
+   "n": 300,
+   "top1": 0.843,
+   "top3": 0.983,
+   "mrr": 0.91,
+   "baselineTop1": 0.63
+  },
+  "byCause": {
+   "deploy": {
+    "n": 200,
+    "top1": 0.825,
+    "top3": 0.985,
+    "mrr": 0.9,
+    "baselineTop1": 0.605
+   },
+   "migration": {
+    "n": 42,
+    "top1": 1.0,
+    "top3": 1.0,
+    "mrr": 1.0,
+    "baselineTop1": 0.69
+   },
+   "config": {
+    "n": 58,
+    "top1": 0.793,
+    "top3": 0.966,
+    "mrr": 0.879,
+    "baselineTop1": 0.672
+   }
+  },
+  "deployWithStackTrace": {
+   "n": 132,
+   "top1": 0.848,
+   "top3": 0.977,
+   "mrr": 0.915,
+   "baselineTop1": 0.614
+  },
+  "deployWithoutStackTrace": {
+   "n": 68,
+   "top1": 0.779,
+   "top3": 1.0,
+   "mrr": 0.873,
+   "baselineTop1": 0.588
+  },
+  "decoyBetweenCauseAndErrors": {
+   "n": 111,
+   "top1": 0.757,
+   "top3": 0.973,
+   "mrr": 0.863,
+   "baselineTop1": 0.0
+  },
+  "seed": 7
+ },
+ "retrieval": {
+  "files": 100,
+  "chunks": 491,
+  "hashing": {
+   "questions": 25,
+   "chunks": 491,
+   "recall@5": 0.6,
+   "hit@5": 0.68,
+   "hit@1": 0.36,
+   "mrr": 0.515,
+   "rows": [
+    {
+     "q": "How are command line arguments split and matched against the declared options?",
+     "relevant": [
+      "src/click/parser.py"
+     ],
+     "top5": [
+      "docs/options.rst",
+      "docs/arguments.rst",
+      "docs/advanced.rst",
+      "tests/test_formatting.py",
+      "docs/parameters.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.08333333333333333
+    },
+    {
+     "q": "Where is tab completion for bash and zsh generated?",
+     "relevant": [
+      "src/click/shell_completion.py"
+     ],
+     "top5": [
+      "docs/shell-completion.rst",
+      "src/click/shell_completion.py",
+      "tests/test_shell_completion.py",
+      "CHANGES.rst",
+      "examples/completion/setup.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How do I invoke a command in a unit test and capture what it printed?",
+     "relevant": [
+      "src/click/testing.py"
+     ],
+     "top5": [
+      "docs/testing.rst",
+      "tests/test_commands.py",
+      "tests/test_command_decorators.py",
+      "tests/test_options.py",
+      "tests/test_utils.py"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.0
+    },
+    {
+     "q": "Where is the progress bar drawn while iterating over items?",
+     "relevant": [
+      "src/click/_termui_impl.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "src/click/termui.py",
+      "docs/utils.rst",
+      "examples/termui/termui.py",
+      "tests/test_termui.py",
+      "CHANGES.rst"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How does the tool ask the user a yes or no question?",
+     "relevant": [
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/prompts.rst",
+      "docs/why.rst",
+      "docs/utils.rst",
+      "src/click/termui.py",
+      "CONTRIBUTING.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.25
+    },
+    {
+     "q": "What error is raised when a parameter gets an invalid value?",
+     "relevant": [
+      "src/click/exceptions.py"
+     ],
+     "top5": [
+      "CHANGES.rst",
+      "src/click/termui.py",
+      "src/click/types.py",
+      "src/click/core.py",
+      "docs/parameters.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.14285714285714285
+    },
+    {
+     "q": "How is help text wrapped and indented to fit the terminal?",
+     "relevant": [
+      "src/click/_textwrap.py",
+      "src/click/formatting.py"
+     ],
+     "top5": [
+      "src/click/formatting.py",
+      "docs/documentation.rst",
+      "tests/test_formatting.py",
+      "src/click/core.py",
+      "CHANGES.rst"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How do I require that a file path argument exists and is readable?",
+     "relevant": [
+      "src/click/types.py"
+     ],
+     "top5": [
+      "src/click/types.py",
+      "docs/arguments.rst",
+      "tests/test_types.py",
+      "src/click/utils.py",
+      "tests/test_info_dict.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How does decorating a function turn it into a command?",
+     "relevant": [
+      "src/click/core.py",
+      "src/click/decorators.py"
+     ],
+     "top5": [
+      "src/click/decorators.py",
+      "docs/quickstart.rst",
+      "docs/complex.rst",
+      "docs/commands.rst",
+      "docs/advanced.rst"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How can code anywhere get hold of the currently running context?",
+     "relevant": [
+      "src/click/globals.py"
+     ],
+     "top5": [
+      "src/click/globals.py",
+      "src/click/core.py",
+      "CHANGES.rst",
+      "docs/advanced.rst",
+      "src/click/shell_completion.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "Where are the Windows console unicode output problems worked around?",
+     "relevant": [
+      "src/click/_compat.py",
+      "src/click/_winconsole.py"
+     ],
+     "top5": [
+      "docs/wincmd.rst",
+      "docs/utils.rst",
+      "CHANGES.rst",
+      "src/click/utils.py",
+      "docs/unicode-support.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.1
+    },
+    {
+     "q": "How is a file opened only when it is first written to?",
+     "relevant": [
+      "src/click/utils.py"
+     ],
+     "top5": [
+      "docs/arguments.rst",
+      "src/click/utils.py",
+      "src/click/types.py",
+      "docs/commands.rst",
+      "docs/utils.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How can option values come from environment variables automatically?",
+     "relevant": [
+      "src/click/core.py"
+     ],
+     "top5": [
+      "src/click/core.py",
+      "docs/options.rst",
+      "docs/parameters.rst",
+      "docs/shell-completion.rst",
+      "docs/arguments.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How does a group find and run the subcommand the user typed?",
+     "relevant": [
+      "src/click/core.py"
+     ],
+     "top5": [
+      "docs/complex.rst",
+      "tests/typing/typing_group_kw_options.py",
+      "docs/utils.rst",
+      "tests/test_custom_classes.py",
+      "docs/why.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.07142857142857142
+    },
+    {
+     "q": "Where is long output sent through a pager like less?",
+     "relevant": [
+      "src/click/_termui_impl.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/utils.rst",
+      "src/click/_termui_impl.py",
+      "src/click/parser.py",
+      "docs/wincmd.rst",
+      "CHANGES.rst"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How does it open the user's text editor to edit a message?",
+     "relevant": [
+      "src/click/_termui_impl.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "src/click/termui.py",
+      "docs/utils.rst",
+      "src/click/_termui_impl.py",
+      "examples/termui/termui.py",
+      "docs/arguments.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How do I restrict a value to one of a fixed list of allowed strings?",
+     "relevant": [
+      "src/click/types.py"
+     ],
+     "top5": [
+      "src/click/types.py",
+      "src/click/core.py",
+      "CHANGES.rst",
+      "docs/parameters.rst",
+      "docs/commands.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How do I print coloured or bold text in the terminal?",
+     "relevant": [
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "src/click/_termui_impl.py",
+      "docs/utils.rst",
+      "docs/documentation.rst",
+      "src/click/termui.py",
+      "src/click/utils.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.25
+    },
+    {
+     "q": "Where is the flag that prints the program's version and exits defined?",
+     "relevant": [
+      "src/click/decorators.py"
+     ],
+     "top5": [
+      "docs/options.rst",
+      "src/click/decorators.py",
+      "CHANGES.rst",
+      "docs/advanced.rst",
+      "docs/exceptions.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How does it tell binary streams apart from text streams?",
+     "relevant": [
+      "src/click/_compat.py"
+     ],
+     "top5": [
+      "src/click/_compat.py",
+      "src/click/_winconsole.py",
+      "docs/utils.rst",
+      "docs/unicode-support.rst",
+      "src/click/utils.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How are numbers checked to be within a minimum and maximum?",
+     "relevant": [
+      "src/click/types.py"
+     ],
+     "top5": [
+      "docs/documentation.rst",
+      "docs/parameters.rst",
+      "src/click/core.py",
+      "src/click/formatting.py",
+      "CHANGES.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.16666666666666666
+    },
+    {
+     "q": "What function should I use instead of print to write output safely?",
+     "relevant": [
+      "src/click/termui.py",
+      "src/click/utils.py"
+     ],
+     "top5": [
+      "docs/quickstart.rst",
+      "docs/utils.rst",
+      "src/click/termui.py",
+      "src/click/utils.py",
+      "tests/test_commands.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.3333333333333333
+    },
+    {
+     "q": "How are default values displayed in the generated help page?",
+     "relevant": [
+      "src/click/core.py"
+     ],
+     "top5": [
+      "CHANGES.rst",
+      "tests/test_options.py",
+      "docs/documentation.rst",
+      "src/click/core.py",
+      "src/click/decorators.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.25
+    },
+    {
+     "q": "How is a password read from the user without echoing it?",
+     "relevant": [
+      "src/click/core.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/utils.rst",
+      "docs/options.rst",
+      "examples/repo/repo.py",
+      "tests/typing/typing_password_option.py",
+      "docs/arguments.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.09090909090909091
+    },
+    {
+     "q": "What happens when the user presses Ctrl+C while a command runs?",
+     "relevant": [
+      "src/click/core.py",
+      "src/click/exceptions.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/commands.rst",
+      "docs/advanced.rst",
+      "docs/options.rst",
+      "docs/quickstart.rst",
+      "docs/utils.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.14285714285714285
+    }
+   ]
+  },
+  "semantic": {
+   "questions": 25,
+   "chunks": 491,
+   "recall@5": 0.707,
+   "hit@5": 0.8,
+   "hit@1": 0.36,
+   "mrr": 0.544,
+   "rows": [
+    {
+     "q": "How are command line arguments split and matched against the declared options?",
+     "relevant": [
+      "src/click/parser.py"
+     ],
+     "top5": [
+      "CHANGES.rst",
+      "docs/options.rst",
+      "tests/test_arguments.py",
+      "docs/advanced.rst",
+      "docs/why.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.08333333333333333
+    },
+    {
+     "q": "Where is tab completion for bash and zsh generated?",
+     "relevant": [
+      "src/click/shell_completion.py"
+     ],
+     "top5": [
+      "docs/shell-completion.rst",
+      "src/click/shell_completion.py",
+      "tests/test_shell_completion.py",
+      "CHANGES.rst",
+      "src/click/core.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How do I invoke a command in a unit test and capture what it printed?",
+     "relevant": [
+      "src/click/testing.py"
+     ],
+     "top5": [
+      "tests/test_commands.py",
+      "tests/test_utils.py",
+      "docs/testing.rst",
+      "tests/test_termui.py",
+      "tests/test_options.py"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.0
+    },
+    {
+     "q": "Where is the progress bar drawn while iterating over items?",
+     "relevant": [
+      "src/click/_termui_impl.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "src/click/termui.py",
+      "docs/utils.rst",
+      "examples/termui/termui.py",
+      "src/click/_termui_impl.py",
+      "tests/test_termui.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How does the tool ask the user a yes or no question?",
+     "relevant": [
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/prompts.rst",
+      "src/click/termui.py",
+      "docs/why.rst",
+      "docs/options.rst",
+      "CONTRIBUTING.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "What error is raised when a parameter gets an invalid value?",
+     "relevant": [
+      "src/click/exceptions.py"
+     ],
+     "top5": [
+      "src/click/exceptions.py",
+      "src/click/termui.py",
+      "src/click/parser.py",
+      "CHANGES.rst",
+      "src/click/core.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How is help text wrapped and indented to fit the terminal?",
+     "relevant": [
+      "src/click/_textwrap.py",
+      "src/click/formatting.py"
+     ],
+     "top5": [
+      "src/click/formatting.py",
+      "docs/documentation.rst",
+      "tests/test_formatting.py",
+      "CHANGES.rst",
+      "src/click/core.py"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How do I require that a file path argument exists and is readable?",
+     "relevant": [
+      "src/click/types.py"
+     ],
+     "top5": [
+      "src/click/types.py",
+      "docs/arguments.rst",
+      "tests/test_info_dict.py",
+      "src/click/utils.py",
+      "tests/test_types.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How does decorating a function turn it into a command?",
+     "relevant": [
+      "src/click/core.py",
+      "src/click/decorators.py"
+     ],
+     "top5": [
+      "src/click/decorators.py",
+      "docs/quickstart.rst",
+      "docs/commands.rst",
+      "docs/complex.rst",
+      "src/click/core.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How can code anywhere get hold of the currently running context?",
+     "relevant": [
+      "src/click/globals.py"
+     ],
+     "top5": [
+      "src/click/globals.py",
+      "docs/advanced.rst",
+      "src/click/shell_completion.py",
+      "src/click/core.py",
+      "tests/test_context.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "Where are the Windows console unicode output problems worked around?",
+     "relevant": [
+      "src/click/_compat.py",
+      "src/click/_winconsole.py"
+     ],
+     "top5": [
+      "docs/wincmd.rst",
+      "src/click/utils.py",
+      "docs/utils.rst",
+      "docs/unicode-support.rst",
+      "CHANGES.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.1111111111111111
+    },
+    {
+     "q": "How is a file opened only when it is first written to?",
+     "relevant": [
+      "src/click/utils.py"
+     ],
+     "top5": [
+      "docs/arguments.rst",
+      "docs/utils.rst",
+      "docs/commands.rst",
+      "src/click/_compat.py",
+      "src/click/types.py"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.16666666666666666
+    },
+    {
+     "q": "How can option values come from environment variables automatically?",
+     "relevant": [
+      "src/click/core.py"
+     ],
+     "top5": [
+      "docs/options.rst",
+      "src/click/core.py",
+      "docs/parameters.rst",
+      "docs/shell-completion.rst",
+      "tests/test_options.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How does a group find and run the subcommand the user typed?",
+     "relevant": [
+      "src/click/core.py"
+     ],
+     "top5": [
+      "docs/complex.rst",
+      "docs/commands.rst",
+      "docs/quickstart.rst",
+      "tests/typing/typing_aliased_group.py",
+      "CHANGES.rst"
+     ],
+     "recall": 0.0,
+     "hit": false,
+     "rr": 0.16666666666666666
+    },
+    {
+     "q": "Where is long output sent through a pager like less?",
+     "relevant": [
+      "src/click/_termui_impl.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "src/click/_termui_impl.py",
+      "docs/utils.rst",
+      "CHANGES.rst",
+      "docs/documentation.rst",
+      "docs/wincmd.rst"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How does it open the user's text editor to edit a message?",
+     "relevant": [
+      "src/click/_termui_impl.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/utils.rst",
+      "examples/termui/termui.py",
+      "src/click/termui.py",
+      "src/click/_termui_impl.py",
+      "CHANGES.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.3333333333333333
+    },
+    {
+     "q": "How do I restrict a value to one of a fixed list of allowed strings?",
+     "relevant": [
+      "src/click/types.py"
+     ],
+     "top5": [
+      "src/click/types.py",
+      "CHANGES.rst",
+      "src/click/core.py",
+      "docs/options.rst",
+      "docs/commands.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How do I print coloured or bold text in the terminal?",
+     "relevant": [
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/utils.rst",
+      "src/click/utils.py",
+      "src/click/termui.py",
+      "docs/documentation.rst",
+      "CHANGES.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.3333333333333333
+    },
+    {
+     "q": "Where is the flag that prints the program's version and exits defined?",
+     "relevant": [
+      "src/click/decorators.py"
+     ],
+     "top5": [
+      "docs/options.rst",
+      "src/click/decorators.py",
+      "CHANGES.rst",
+      "docs/advanced.rst",
+      "src/click/core.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "How does it tell binary streams apart from text streams?",
+     "relevant": [
+      "src/click/_compat.py"
+     ],
+     "top5": [
+      "src/click/_compat.py",
+      "src/click/utils.py",
+      "docs/unicode-support.rst",
+      "src/click/testing.py",
+      "docs/utils.rst"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 1.0
+    },
+    {
+     "q": "How are numbers checked to be within a minimum and maximum?",
+     "relevant": [
+      "src/click/types.py"
+     ],
+     "top5": [
+      "docs/documentation.rst",
+      "src/click/types.py",
+      "docs/parameters.rst",
+      "src/click/core.py",
+      "src/click/formatting.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.5
+    },
+    {
+     "q": "What function should I use instead of print to write output safely?",
+     "relevant": [
+      "src/click/termui.py",
+      "src/click/utils.py"
+     ],
+     "top5": [
+      "src/click/_compat.py",
+      "tests/test_commands.py",
+      "docs/quickstart.rst",
+      "src/click/utils.py",
+      "docs/utils.rst"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 0.25
+    },
+    {
+     "q": "How are default values displayed in the generated help page?",
+     "relevant": [
+      "src/click/core.py"
+     ],
+     "top5": [
+      "CHANGES.rst",
+      "src/click/decorators.py",
+      "tests/test_options.py",
+      "docs/documentation.rst",
+      "src/click/core.py"
+     ],
+     "recall": 1.0,
+     "hit": true,
+     "rr": 0.2
+    },
+    {
+     "q": "How is a password read from the user without echoing it?",
+     "relevant": [
+      "src/click/core.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/options.rst",
+      "docs/utils.rst",
+      "tests/typing/typing_password_option.py",
+      "src/click/_termui_impl.py",
+      "src/click/core.py"
+     ],
+     "recall": 0.5,
+     "hit": true,
+     "rr": 0.2
+    },
+    {
+     "q": "What happens when the user presses Ctrl+C while a command runs?",
+     "relevant": [
+      "src/click/core.py",
+      "src/click/exceptions.py",
+      "src/click/termui.py"
+     ],
+     "top5": [
+      "docs/utils.rst",
+      "docs/commands.rst",
+      "docs/advanced.rst",
+      "src/click/termui.py",
+      "src/click/core.py"
+     ],
+     "recall": 0.6666666666666666,
+     "hit": true,
+     "rr": 0.25
+    }
+   ]
+  }
+ },
+ "risk": {
+  "click": {
+   "cutoffsUsed": 10,
+   "windowDays": 90,
+   "horizonDays": 90,
+   "meanAucRisk": 0.628,
+   "meanAucChurnOnly": 0.604,
+   "meanAucChangeCountOnly": 0.654,
+   "meanPrecision@3": 0.4,
+   "meanPrecision@3ChurnOnly": 0.4,
+   "meanBaseRate": 0.317,
+   "rows": [
+    {
+     "cutoff": "2026-08-16",
+     "files": 13,
+     "buggy": 2,
+     "aucRisk": 0.8181818181818182,
+     "aucChurn": 0.7272727272727273,
+     "aucChanges": 0.7954545454545454,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.0,
+     "baseRate": 0.154
+    },
+    {
+     "cutoff": "2026-04-18",
+     "files": 6,
+     "buggy": 3,
+     "aucRisk": 0.6666666666666666,
+     "aucChurn": 0.6111111111111112,
+     "aucChanges": 0.7777777777777778,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.5
+    },
+    {
+     "cutoff": "2025-08-21",
+     "files": 12,
+     "buggy": 1,
+     "aucRisk": 1.0,
+     "aucChurn": 1.0,
+     "aucChanges": 1.0,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.083
+    },
+    {
+     "cutoff": "2025-04-23",
+     "files": 4,
+     "buggy": 2,
+     "aucRisk": 1.0,
+     "aucChurn": 1.0,
+     "aucChanges": 0.75,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.5
+    },
+    {
+     "cutoff": "2024-12-24",
+     "files": 12,
+     "buggy": 1,
+     "aucRisk": 0.22727272727272727,
+     "aucChurn": 0.18181818181818182,
+     "aucChanges": 0.045454545454545456,
+     "precision@3": 0.0,
+     "precision@3Churn": 0.0,
+     "baseRate": 0.083
+    },
+    {
+     "cutoff": "2024-08-26",
+     "files": 4,
+     "buggy": 3,
+     "aucRisk": 0.8333333333333334,
+     "aucChurn": 0.5,
+     "aucChanges": 0.6666666666666666,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.75
+    },
+    {
+     "cutoff": "2024-04-28",
+     "files": 14,
+     "buggy": 2,
+     "aucRisk": 0.5208333333333334,
+     "aucChurn": 0.6041666666666666,
+     "aucChanges": 0.6041666666666666,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.143
+    },
+    {
+     "cutoff": "2023-05-04",
+     "files": 6,
+     "buggy": 1,
+     "aucRisk": 0.0,
+     "aucChurn": 0.1,
+     "aucChanges": 0.5,
+     "precision@3": 0.0,
+     "precision@3Churn": 0.0,
+     "baseRate": 0.167
+    },
+    {
+     "cutoff": "2022-01-09",
+     "files": 11,
+     "buggy": 5,
+     "aucRisk": 0.7166666666666667,
+     "aucChurn": 0.8166666666666667,
+     "aucChanges": 0.8333333333333334,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 1.0,
+     "baseRate": 0.455
+    },
+    {
+     "cutoff": "2021-09-11",
+     "files": 6,
+     "buggy": 2,
+     "aucRisk": 0.5,
+     "aucChurn": 0.5,
+     "aucChanges": 0.5625,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.333
+    }
+   ]
+  },
+  "black": {
+   "cutoffsUsed": 16,
+   "windowDays": 90,
+   "horizonDays": 90,
+   "meanAucRisk": 0.609,
+   "meanAucChurnOnly": 0.634,
+   "meanAucChangeCountOnly": 0.73,
+   "meanPrecision@3": 0.521,
+   "meanPrecision@3ChurnOnly": 0.417,
+   "meanBaseRate": 0.312,
+   "rows": [
+    {
+     "cutoff": "2026-08-19",
+     "files": 21,
+     "buggy": 13,
+     "aucRisk": 0.7644230769230769,
+     "aucChurn": 0.8173076923076923,
+     "aucChanges": 0.9326923076923077,
+     "precision@3": 1.0,
+     "precision@3Churn": 1.0,
+     "baseRate": 0.619
+    },
+    {
+     "cutoff": "2026-04-21",
+     "files": 25,
+     "buggy": 8,
+     "aucRisk": 0.6838235294117647,
+     "aucChurn": 0.7426470588235294,
+     "aucChanges": 0.8455882352941176,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.32
+    },
+    {
+     "cutoff": "2025-12-22",
+     "files": 34,
+     "buggy": 11,
+     "aucRisk": 0.6739130434782609,
+     "aucChurn": 0.6245059288537549,
+     "aucChanges": 0.7075098814229249,
+     "precision@3": 1.0,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.324
+    },
+    {
+     "cutoff": "2025-08-24",
+     "files": 18,
+     "buggy": 7,
+     "aucRisk": 0.474025974025974,
+     "aucChurn": 0.43506493506493504,
+     "aucChanges": 0.6233766233766234,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.389
+    },
+    {
+     "cutoff": "2025-04-26",
+     "files": 11,
+     "buggy": 3,
+     "aucRisk": 0.4166666666666667,
+     "aucChurn": 0.7291666666666666,
+     "aucChanges": 0.75,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.273
+    },
+    {
+     "cutoff": "2024-12-27",
+     "files": 25,
+     "buggy": 6,
+     "aucRisk": 0.4649122807017544,
+     "aucChurn": 0.5131578947368421,
+     "aucChanges": 0.6403508771929824,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.24
+    },
+    {
+     "cutoff": "2024-08-29",
+     "files": 7,
+     "buggy": 3,
+     "aucRisk": 0.4583333333333333,
+     "aucChurn": 0.20833333333333334,
+     "aucChanges": 0.25,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.0,
+     "baseRate": 0.429
+    },
+    {
+     "cutoff": "2024-05-01",
+     "files": 21,
+     "buggy": 1,
+     "aucRisk": 0.975,
+     "aucChurn": 0.95,
+     "aucChanges": 1.0,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.048
+    },
+    {
+     "cutoff": "2024-01-02",
+     "files": 32,
+     "buggy": 11,
+     "aucRisk": 0.7316017316017316,
+     "aucChurn": 0.8225108225108225,
+     "aucChanges": 0.8658008658008658,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.344
+    },
+    {
+     "cutoff": "2023-09-04",
+     "files": 31,
+     "buggy": 10,
+     "aucRisk": 0.4261904761904762,
+     "aucChurn": 0.4,
+     "aucChanges": 0.6261904761904762,
+     "precision@3": 0.0,
+     "precision@3Churn": 0.0,
+     "baseRate": 0.323
+    },
+    {
+     "cutoff": "2023-05-07",
+     "files": 15,
+     "buggy": 5,
+     "aucRisk": 0.52,
+     "aucChurn": 0.62,
+     "aucChanges": 0.78,
+     "precision@3": 0.3333333333333333,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.333
+    },
+    {
+     "cutoff": "2023-01-07",
+     "files": 11,
+     "buggy": 5,
+     "aucRisk": 0.8,
+     "aucChurn": 0.7666666666666667,
+     "aucChanges": 0.7833333333333333,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.455
+    },
+    {
+     "cutoff": "2022-09-09",
+     "files": 29,
+     "buggy": 5,
+     "aucRisk": 0.45416666666666666,
+     "aucChurn": 0.6,
+     "aucChanges": 0.625,
+     "precision@3": 0.0,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.172
+    },
+    {
+     "cutoff": "2022-05-12",
+     "files": 15,
+     "buggy": 3,
+     "aucRisk": 0.6944444444444444,
+     "aucChurn": 0.6388888888888888,
+     "aucChanges": 0.8888888888888888,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.0,
+     "baseRate": 0.2
+    },
+    {
+     "cutoff": "2022-01-12",
+     "files": 29,
+     "buggy": 7,
+     "aucRisk": 0.7987012987012987,
+     "aucChurn": 0.7402597402597403,
+     "aucChanges": 0.8214285714285714,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.6666666666666666,
+     "baseRate": 0.241
+    },
+    {
+     "cutoff": "2021-09-14",
+     "files": 18,
+     "buggy": 5,
+     "aucRisk": 0.4076923076923077,
+     "aucChurn": 0.5384615384615384,
+     "aucChanges": 0.5384615384615384,
+     "precision@3": 0.6666666666666666,
+     "precision@3Churn": 0.3333333333333333,
+     "baseRate": 0.278
+    }
+   ]
+  }
+ }
+}

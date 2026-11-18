@@ -7,6 +7,7 @@ live demo) does not lose it.
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import threading
@@ -24,9 +25,11 @@ from urllib.parse import parse_qs, urlparse
 from .assistant import RepositoryAssistant
 from .domain import RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
-from .embeddings import tokenize
+from .embeddings import make_embedder, tokenize
 from .failure_analysis import FailureAnalyzer
+from .events import ADAPTERS, EventStore, make_event, parse_log_text
 from .flaky import detect_flaky
+from .incidents import ai_narrative, detect_incidents
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
 from .pipeline import IntelligencePipeline
 from .risk_engine import RiskResult
@@ -45,7 +48,22 @@ DEMO_REPOSITORY = "acme/payments-api"
 START = datetime.fromisoformat("2026-09-09T12:00:00")
 NOW = datetime.fromisoformat("2026-09-16T12:00:00")
 LIVE_WINDOW_DAYS = 30
-ALLOWED_ORIGINS = {"http://localhost:3000", "http://127.0.0.1:3000"}
+ALLOWED_ORIGINS = {"http://localhost:3000", "http://127.0.0.1:3000"} | {
+    origin.strip() for origin in os.environ.get("AEIP_ALLOWED_ORIGINS", "").split(",") if origin.strip()}
+ROLE_RANK = {"viewer": 0, "member": 1, "admin": 2}
+
+
+def audit(action: str, user: str, role: str, detail: str = "", allowed: bool = True) -> None:
+    """Append-only record of who did what (SEC-03). Kept next to the cache, never sent anywhere."""
+    record = {"time": datetime.now().astimezone().isoformat(timespec="seconds"), "user": user, "role": role,
+              "action": action, "detail": detail[:200], "allowed": allowed}
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with (CACHE_DIR / "audit.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+    print(f"[audit] {record}")
 HISTORY_TERMS = set(tokenize("changed recent recently commit history fail failure failing broke build pipeline ci deploy"))
 
 
@@ -118,13 +136,87 @@ class IntelligenceDemoService:
         self.cache_dir = cache_dir
         self.github_factory = github_factory
         self.database_sync = database_sync
+        self.embedder, self.embedder_note = make_embedder(cache_dir)
         self.assistant = RepositoryAssistant()
         self.failure_analyzer = FailureAnalyzer()
         self.repositories: dict[str, AnalyzedRepository] = {}
         self._lock = threading.Lock()
+        self.events = EventStore(cache_dir / "events" if cache_dir else None)
+        self._load_demo_events()
         demo = JsonSeedDataSource(ROOT / "data" / "demo_repository.json").load_snapshot(DEMO_REPOSITORY)
         self._register(demo, "demo fixture", [], window=(START, NOW, 7))
         self._load_cache()
+
+    def _load_demo_events(self) -> None:
+        path = ROOT / "data" / "demo_events.json"
+        if not path.exists():
+            return
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        events = [make_event(item) for item in raw.get("events", [])]
+        for log in raw.get("logs", []):
+            events += parse_log_text(log["text"], log["source"], log.get("service", ""), log.get("environment", ""))
+        self.events.add(DEMO_REPOSITORY, events, persist=False)
+
+    # -- operational events (deploys, app logs, databases, alerts) -------------
+    def ingest_events(self, repository: str, payload: Any, adapter: str = "generic") -> dict[str, Any]:
+        repository = parse_repository(repository)
+        if adapter == "generic":
+            items = payload.get("events", [payload]) if isinstance(payload, dict) else payload
+            if not isinstance(items, list) or not items:
+                raise ValueError('Send an event object, a list of events, or {"events": [...]}.')
+            if len(items) > 1000:
+                raise ValueError("At most 1000 events per request.")
+            events = [make_event(item) for item in items]
+        elif adapter in ADAPTERS:
+            if not isinstance(payload, dict):
+                raise ValueError(f"A {adapter} webhook payload must be a JSON object.")
+            events = ADAPTERS[adapter](payload)
+        else:
+            raise ValueError(f"Unknown event format {adapter!r}; use generic, logs or {', '.join(sorted(ADAPTERS))}.")
+        added = self.events.add(repository, events)
+        return {"repository": repository, "received": len(events), "added": added}
+
+    def ingest_logs(self, repository: str, text: str, source: str = "app", service: str = "",
+                    environment: str = "", min_severity: str = "warning") -> dict[str, Any]:
+        repository = parse_repository(repository)
+        if not text.strip():
+            raise ValueError("Log text is empty.")
+        events = parse_log_text(text, source, service, environment, datetime.now().astimezone(), min_severity)
+        added = self.events.add(repository, events)
+        return {"repository": repository, "received": len(events), "added": added}
+
+    def list_events(self, repository: str | None = None, source: str | None = None, limit: int = 500) -> dict[str, Any]:
+        name = repository or DEMO_REPOSITORY
+        events = [item for item in self.events.list(name) if not source or item.source == source]
+        counts: dict[str, int] = {}
+        for item in events:
+            counts[item.source] = counts.get(item.source, 0) + 1
+        return {"repository": name, "total": len(events), "bySource": counts,
+                "events": [item.to_json() for item in events[-max(1, min(limit, 5000)):]]}
+
+    # -- incidents across tools -------------------------------------------------
+    def _incidents(self, repository: str | None):
+        entry = self._get(repository)
+        return entry, detect_incidents(entry.snapshot, self.events.list(entry.snapshot.repository), entry.risks)
+
+    def incidents(self, repository: str | None = None) -> dict[str, Any]:
+        entry, found = self._incidents(repository)
+        counts = self.list_events(entry.snapshot.repository, limit=1)["bySource"]
+        return {"repository": entry.snapshot.repository, "eventsBySource": counts,
+                "incidents": [item.summary() for item in found]}
+
+    def incident(self, incident_id: str, repository: str | None = None, use_ai: bool = False) -> dict[str, Any]:
+        entry, found = self._incidents(repository)
+        incident = next((item for item in found if item.id == incident_id), None)
+        if incident is None:
+            raise KeyError(f"No incident {incident_id!r} in {entry.snapshot.repository}.")
+        payload = incident.to_json() | {"narrativeMode": "rules"}
+        client = groq_client_if_configured() if use_ai else None
+        if client is not None:
+            text = ai_narrative(incident, client)
+            if text:
+                payload |= {"narrative": text, "narrativeMode": "groq"}
+        return payload
 
     # -- repository registry ---------------------------------------------------
     def _load_cache(self) -> None:
@@ -142,10 +234,12 @@ class IntelligenceDemoService:
                   window: tuple[datetime, datetime, int] | None = None,
                   analyzed_at: str | None = None) -> AnalyzedRepository:
         stages = list(stages)
-        pipeline = IntelligencePipeline()
+        pipeline = IntelligencePipeline(snapshot.repository, self.embedder, self.embedder_note)
         started = time.perf_counter()
         indexed = pipeline.prepare(snapshot)
-        stages.append({"stage": "Embedding + vector index", "detail": f"{indexed} chunks embedded for hybrid retrieval",
+        stages = [stage for stage in stages if stage.get("stage") != "Embedding + vector index"]
+        stages.append({"stage": "Embedding + vector index",
+                       "detail": f"{indexed} chunks embedded for hybrid retrieval · {pipeline.index_description}",
                        "ms": round((time.perf_counter() - started) * 1000)})
 
         # DORA counts push-triggered CI runs on the default branch as deployments; PR and
@@ -154,11 +248,9 @@ class IntelligenceDemoService:
             item for item in snapshot.deployments
             if (not snapshot.default_branch or item.branch == snapshot.default_branch)
             and item.event in ("", "push")))
-        risk_snapshot = snapshot
+        include = None
         if window is None:
-            risk_snapshot = replace(snapshot, commits=tuple(
-                replace(item, files=tuple(path for path in item.files if is_source_code(path)))
-                for item in snapshot.commits))
+            include = is_source_code  # live repositories: score production code only
             # Analyse "as of" the latest activity so quiet repositories still show data, and
             # widen the risk window to cover every fetched commit.
             commit_times = [item.authored_at for item in snapshot.commits]
@@ -173,7 +265,7 @@ class IntelligenceDemoService:
             risk_now = now
 
         started = time.perf_counter()
-        risks = pipeline.risk_engine.score_files(risk_snapshot, risk_now, window_days)
+        risks = pipeline.risk_engine.score_files(snapshot, risk_now, window_days, include)
         top = f"; highest {risks[0].path} ({risks[0].score}/100)" if risks else ""
         stages.append({"stage": "Risk scoring", "detail": f"{len(risks)} files scored over {window_days} days{top}",
                        "ms": round((time.perf_counter() - started) * 1000)})
@@ -280,7 +372,9 @@ class IntelligenceDemoService:
             "deployTrend": [{"d": day, "v": count} for day, count in deployments_by_day.items()],
             "riskItems": [
                 {"file": item.path, "score": item.score, "reason": "; ".join(item.reasons), "level": item.level,
-                 "changes": item.recent_changes, "churn": item.churn, "complexity": item.complexity_delta}
+                 "changes": item.recent_changes, "churn": item.churn, "complexity": item.complexity_delta,
+                 "hasTests": item.has_tests, "testTouchRatio": item.test_touch_ratio, "dependents": item.dependents,
+                 "dependencyChanges": item.dependency_changes, "breakdown": item.breakdown()}
                 for item in entry.risks[:25]
             ],
             "failures": [
@@ -301,6 +395,8 @@ class IntelligenceDemoService:
                 if deployment.status == "failure"
             ][:25],
             "flaky": [item.to_json() for item in flaky if item.level != "stable"],
+            "incidents": [item.summary() for item in detect_incidents(snapshot, self.events.list(snapshot.repository),
+                                                                      entry.risks)][:5],
             "summary": summary,
             "windowDays": entry.window_days,
             "evidence": [{"path": item.path, "score": item.score} for item in evidence],
@@ -381,18 +477,50 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         self.send_header("Access-Control-Allow-Origin", origin if origin in ALLOWED_ORIGINS else "http://localhost:3000")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-AEIP-Key")
         self.end_headers()
         self.wfile.write(encoded)
 
-    def _read_body(self) -> dict[str, Any]:
+    def _read_raw(self, limit: int) -> bytes:
         content_length = int(self.headers.get("Content-Length", "0"))
-        if content_length > 10_000:
+        if content_length > limit:
             raise ValueError("Request body is too large.")
-        body = json.loads(self.rfile.read(content_length) or b"{}")
-        if not isinstance(body, dict):
+        return self.rfile.read(content_length)
+
+    def _read_body(self, limit: int = 10_000, allow_list: bool = False) -> Any:
+        body = json.loads(self._read_raw(limit) or b"{}")
+        if not isinstance(body, dict) and not (allow_list and isinstance(body, list)):
             raise ValueError("Request body must be an object.")
         return body
+
+    def _caller(self, needed: str = "viewer", action: str = "") -> tuple[str, str] | None:
+        """Identity forwarded by the dashboard's backend-for-frontend. When AEIP_SERVICE_TOKEN is set,
+        only callers holding it are accepted (SEC-01) and the forwarded role must allow the action
+        (SEC-02). Without it the API runs open for local development."""
+        expected = os.environ.get("AEIP_SERVICE_TOKEN", "")
+        if not expected:
+            return "local", "admin"
+        supplied = self.headers.get("X-AEIP-Service-Token", "")
+        if not hmac.compare_digest(supplied.encode(), expected.encode()):
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "This API only accepts calls from the AEIP dashboard."})
+            return None
+        user, role = self.headers.get("X-AEIP-User", "unknown")[:60], self.headers.get("X-AEIP-Role", "")
+        if ROLE_RANK.get(role, -1) < ROLE_RANK[needed]:
+            audit(action or self.path, user, role, "denied: needs " + needed, allowed=False)
+            self._send_json(HTTPStatus.FORBIDDEN, {"error": f"Role {role or 'none'} cannot do this; it needs {needed}."})
+            return None
+        return user, role
+
+    def _ingest_authorized(self, query: dict[str, list[str]]) -> bool:
+        """Ingest routes accept writes from outside tools. When AEIP_INGEST_KEY is set, require it
+        (X-AEIP-Key header, Bearer token, or ?key= for tools that cannot set headers)."""
+        expected = os.environ.get("AEIP_INGEST_KEY", "")
+        if not expected:
+            return True
+        auth = self.headers.get("Authorization", "")
+        supplied = (self.headers.get("X-AEIP-Key") or (auth[7:] if auth.lower().startswith("bearer ") else "")
+                    or query.get("key", [""])[0])
+        return hmac.compare_digest(supplied.encode(), expected.encode())
 
     def _handle(self, action: Callable[[], dict[str, Any]]) -> None:
         try:
@@ -413,6 +541,13 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - inherited HTTP method name
         url = urlparse(self.path)
         repository = parse_qs(url.query).get("repository", [None])[0]
+        if url.path != "/health":
+            wants_ai = url.path == "/api/incidents" and parse_qs(url.query).get("ai", ["0"])[0] == "1"
+            caller = self._caller("member" if wants_ai else "viewer", "incident.ai-summary" if wants_ai else "")
+            if caller is None:
+                return
+            if wants_ai:
+                audit("incident.ai-summary", *caller, detail=url.query)
         if url.path == "/health":
             self._send_json(HTTPStatus.OK, {"status": "ok", "service": "aeip-intelligence",
                                             "llm": "groq" if groq_client_if_configured() else "offline"})
@@ -420,11 +555,60 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._handle(lambda: self.service.overview(repository))
         elif url.path == "/api/repositories":
             self._handle(self.service.list_repositories)
+        elif url.path == "/api/incidents":
+            incident_id = parse_qs(url.query).get("id", [None])[0]
+            if incident_id:
+                use_ai = parse_qs(url.query).get("ai", ["0"])[0] == "1"
+                self._handle(lambda: self.service.incident(incident_id, repository, use_ai))
+            else:
+                self._handle(lambda: self.service.incidents(repository))
+        elif url.path == "/api/events":
+            query = parse_qs(url.query)
+            self._handle(lambda: self.service.list_events(repository, query.get("source", [None])[0],
+                                                          int(query.get("limit", ["500"])[0])))
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
 
     def do_POST(self) -> None:  # noqa: N802 - inherited HTTP method name
-        path = urlparse(self.path).path
+        url = urlparse(self.path)
+        path, query = url.path, parse_qs(url.query)
+        if path.startswith("/api/events"):
+            if not self._ingest_authorized(query):
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Missing or wrong ingest key (AEIP_INGEST_KEY)."})
+                return
+            fmt = path[len("/api/events"):].strip("/") or "generic"
+            repository = query.get("repository", [""])[0]
+
+            def ingest() -> dict[str, Any]:
+                if fmt == "logs":
+                    raw = self._read_raw(5_000_000)
+                    if "json" in self.headers.get("Content-Type", ""):
+                        body = json.loads(raw or b"{}")
+                        return self.service.ingest_logs(body.get("repository") or repository, str(body.get("text", "")),
+                                                        body.get("source", "app"), body.get("service", ""),
+                                                        body.get("environment", ""), body.get("minSeverity", "warning"))
+                    return self.service.ingest_logs(repository, raw.decode("utf-8", errors="replace"),
+                                                    query.get("source", ["app"])[0], query.get("service", [""])[0],
+                                                    query.get("environment", [""])[0],
+                                                    query.get("minSeverity", ["warning"])[0])
+                body = self._read_body(2_000_000, allow_list=True)
+                target = repository or (body.get("repository", "") if isinstance(body, dict) and fmt == "generic" else "")
+                if not target:
+                    raise ValueError("Say which repository these events belong to: ?repository=owner/name")
+                return self.service.ingest_events(target, body, fmt)
+            self._handle(ingest)
+        elif path in ("/api/assistant", "/api/repositories/analyze", "/api/failures/explain"):
+            action = {"/api/assistant": "assistant.ask", "/api/repositories/analyze": "repository.analyze",
+                      "/api/failures/explain": "failure.explain"}[path]
+            caller = self._caller("member", action)
+            if caller is None:
+                return
+            audit(action, *caller)
+            self._post_action(path)
+        else:
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
+
+    def _post_action(self, path: str) -> None:
         if path == "/api/assistant":
             def ask() -> dict[str, Any]:
                 body = self._read_body()
@@ -442,8 +626,6 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
                 return self.service.explain_failure(str(body.get("runId", "")), body.get("repository") or None,
                                                     bool(body.get("useAi", True)), bool(body.get("refresh", False)))
             self._handle(explain)
-        else:
-            self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
 
     def log_message(self, format: str, *args: Any) -> None:
         # Keep local demo output readable without hiding server errors.

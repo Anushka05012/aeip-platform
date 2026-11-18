@@ -1,0 +1,120 @@
+{
+ "repository": "acme/payments-api",
+ "events": [
+  {
+   "source": "deploy",
+   "kind": "deploy.succeeded",
+   "time": "2026-09-11T19:10:00Z",
+   "title": "Vercel deploy succeeded: payments-api (production)",
+   "service": "payments-api",
+   "environment": "production",
+   "commit": "a2",
+   "attributes": {
+    "provider": "vercel"
+   }
+  },
+  {
+   "source": "database",
+   "kind": "migration",
+   "time": "2026-09-13T17:00:00Z",
+   "title": "Applying migration 0042_add_payments_created_at_index (CREATE INDEX on payments.created_at)",
+   "service": "payments-db",
+   "environment": "production",
+   "severity": "warning"
+  },
+  {
+   "source": "alert",
+   "kind": "alert.firing",
+   "time": "2026-09-13T17:12:00Z",
+   "title": "Payments DB p95 latency above 2s",
+   "service": "payments-db",
+   "environment": "production",
+   "severity": "critical",
+   "fingerprint": "PaymentsDbLatency"
+  },
+  {
+   "source": "alert",
+   "kind": "alert.resolved",
+   "time": "2026-09-13T17:46:00Z",
+   "title": "Payments DB p95 latency above 2s",
+   "service": "payments-db",
+   "environment": "production",
+   "severity": "info",
+   "fingerprint": "PaymentsDbLatency"
+  },
+  {
+   "source": "database",
+   "kind": "migration",
+   "time": "2026-09-13T17:41:00Z",
+   "title": "Migration 0042_add_payments_created_at_index finished",
+   "service": "payments-db",
+   "environment": "production",
+   "severity": "info"
+  },
+  {
+   "source": "deploy",
+   "kind": "deploy.succeeded",
+   "time": "2026-09-15T14:40:00Z",
+   "title": "Vercel deploy succeeded: payments-api (production)",
+   "service": "payments-api",
+   "environment": "production",
+   "commit": "a6",
+   "attributes": {
+    "provider": "vercel"
+   }
+  },
+  {
+   "source": "alert",
+   "kind": "alert.firing",
+   "time": "2026-09-15T14:52:00Z",
+   "title": "Payment error rate above 5%",
+   "service": "payments-api",
+   "environment": "production",
+   "severity": "critical",
+   "fingerprint": "PaymentErrorRate"
+  },
+  {
+   "source": "deploy",
+   "kind": "deploy.succeeded",
+   "time": "2026-09-15T15:35:00Z",
+   "title": "Rollback deploy succeeded: payments-api (production)",
+   "service": "payments-api",
+   "environment": "production",
+   "commit": "a5",
+   "attributes": {
+    "provider": "vercel",
+    "rollback": true
+   }
+  },
+  {
+   "source": "alert",
+   "kind": "alert.resolved",
+   "time": "2026-09-15T15:41:00Z",
+   "title": "Payment error rate above 5%",
+   "service": "payments-api",
+   "environment": "production",
+   "severity": "info",
+   "fingerprint": "PaymentErrorRate"
+  }
+ ],
+ "logs": [
+  {
+   "source": "database",
+   "service": "payments-db",
+   "environment": "production",
+   "text": "2026-09-13 17:04:12 UTC LOG:  duration: 2412.551 ms  statement: SELECT * FROM payments WHERE created_at > $1\n2026-09-13 17:06:40 UTC ERROR:  canceling statement due to lock timeout\n2026-09-13 17:09:03 UTC LOG:  duration: 3810.002 ms  statement: UPDATE payments SET status = $1 WHERE id = $2\n2026-09-13 17:15:27 UTC ERROR:  canceling statement due to lock timeout\n2026-09-13 17:22:51 UTC LOG:  duration: 2950.120 ms  statement: SELECT * FROM payments WHERE created_at > $1"
+  },
+  {
+   "source": "app",
+   "service": "payments-api",
+   "environment": "production",
+   "text": "2026-09-15T14:44:08Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1044)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:46:22Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1046)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:48:36Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1048)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:50:50Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1050)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:52:04Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1052)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:54:18Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1054)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:56:32Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1056)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T14:58:46Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 1058)\nTraceback (most recent call last):\n  File \"src/routes.py\", line 2, in payment_route\n  File \"src/payment_service.py\", line 4, in process_payment\nGatewayTimeoutError: charge timed out after 30000 ms\n2026-09-15T15:00:00Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2000)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:03:33Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2003)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:06:06Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2006)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:09:39Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2009)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:12:12Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2012)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:15:45Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2015)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:18:18Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2018)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:21:51Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2021)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:24:24Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2024)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:27:57Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2027)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:30:30Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2030)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:33:03Z ERROR GatewayTimeoutError: charge timed out after 30000 ms (order 2033)\n  File \"src/payment_service.py\", line 4, in process_payment\n2026-09-15T15:20:00Z WARN retry queue depth 412 (threshold 100)"
+  },
+  {
+   "source": "database",
+   "service": "payments-db",
+   "environment": "production",
+   "text": "2026-09-15 14:49:30 UTC FATAL:  remaining connection slots are reserved for non-replication superuser connections\n2026-09-15 14:58:02 UTC FATAL:  remaining connection slots are reserved for non-replication superuser connections\n2026-09-15 15:12:44 UTC FATAL:  sorry, too many clients already"
+  }
+ ]
+}

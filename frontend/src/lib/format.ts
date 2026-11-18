@@ -16,6 +16,20 @@ export function relativeTime(value: string) {
   return days < 30 ? `${days} d ago` : formatDateTime(value);
 }
 
+/** Incident times are compared across tools, so they are always shown in UTC. */
+export function utcTime(value: string, withDate = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const time = date.toISOString().slice(11, 16);
+  return withDate ? `${date.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })} ${time}` : time;
+}
+
+export function formatDuration(minutes: number) {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+}
+
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 export function formatMs(ms: number) {
