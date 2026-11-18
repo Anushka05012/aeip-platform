@@ -38,7 +38,8 @@ def snapshot_from_json(raw: dict[str, Any]) -> RepositorySnapshot:
         Deployment(
             id=item["id"], deployed_at=datetime.fromisoformat(item["deployed_at"]),
             commit_sha=item["commit_sha"], status=item["status"],
-            name=item.get("name", ""), branch=item.get("branch", ""), event=item.get("event", ""), log=item.get("log", ""))
+            name=item.get("name", ""), branch=item.get("branch", ""), event=item.get("event", ""), log=item.get("log", ""),
+            run_attempt=item.get("run_attempt", 1))
         for item in raw["deployments"]
     )
     documents = tuple(Document(**item) for item in raw["documents"])
@@ -70,6 +71,7 @@ def snapshot_to_json(snapshot: RepositorySnapshot) -> dict[str, Any]:
             {
                 "id": item.id, "deployed_at": item.deployed_at.isoformat(), "commit_sha": item.commit_sha,
                 "status": item.status, "name": item.name, "branch": item.branch, "event": item.event, "log": item.log,
+                "run_attempt": item.run_attempt,
             }
             for item in snapshot.deployments
         ],

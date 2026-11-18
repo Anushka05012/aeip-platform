@@ -26,6 +26,7 @@ from .domain import RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
 from .embeddings import tokenize
 from .failure_analysis import FailureAnalyzer
+from .flaky import detect_flaky
 from .github_source import GitHubDataSource, GitHubError, is_source_code, parse_repository
 from .pipeline import IntelligencePipeline
 from .risk_engine import RiskResult
@@ -254,6 +255,8 @@ class IntelligenceDemoService:
             day = deployment.deployed_at.strftime("%b ") + str(deployment.deployed_at.day)
             deployments_by_day[day] = deployments_by_day.get(day, 0) + 1
         commit_messages = {item.sha: item.message.splitlines()[0] for item in snapshot.commits if item.message}
+        flaky = detect_flaky(snapshot.deployments)
+        flaky_runs = {run_id for item in flaky for run_id in item.flaky_failure_ids}
         label = "Demo dataset" if entry.source == "demo fixture" else f"Last {entry.window_days} days"
 
         return {
@@ -292,10 +295,12 @@ class IntelligenceDemoService:
                               + (f": {commit_messages[deployment.commit_sha]}" if deployment.commit_sha in commit_messages else "")),
                     "time": deployment.deployed_at.isoformat(),
                     "severity": "high" if deployment.branch in ("", "main", "master") else "medium",
+                    "flaky": deployment.id in flaky_runs,
                 }
                 for deployment in sorted(snapshot.deployments, key=lambda item: item.deployed_at, reverse=True)
                 if deployment.status == "failure"
             ][:25],
+            "flaky": [item.to_json() for item in flaky if item.level != "stable"],
             "summary": summary,
             "windowDays": entry.window_days,
             "evidence": [{"path": item.path, "score": item.score} for item in evidence],
@@ -325,7 +330,8 @@ class IntelligenceDemoService:
                 notes.append(f"Could not fetch job details from GitHub: {exc}")
         client = groq_client_if_configured() if use_ai else None
         result = self.failure_analyzer.explain(deployment, commit, failed_jobs, entry.risks,
-                                               entry.pipeline.retriever, client, entry.snapshot.pull_requests)
+                                               entry.pipeline.retriever, client, entry.snapshot.pull_requests,
+                                               entry.snapshot.deployments)
         result.notes = notes + result.notes
         payload = result.to_json()
         if cache_file and not notes:  # don't cache an analysis that was missing GitHub data

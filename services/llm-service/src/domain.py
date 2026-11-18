@@ -28,6 +28,7 @@ class Deployment:
     branch: str = ""
     event: str = ""  # what triggered the CI run: "push", "schedule", "pull_request", ...
     log: str = ""  # stored CI log text, when the source provides it (demo fixture)
+    run_attempt: int = 1  # GitHub re-runs keep the run id and increase the attempt
 
 
 @dataclass(frozen=True)

@@ -257,6 +257,7 @@ class GitHubDataSource:
                 name=run.get("name") or "workflow",
                 branch=run.get("head_branch") or "",
                 event=run.get("event") or "",
+                run_attempt=int(run.get("run_attempt") or 1),
             )
             for run in runs
             if run.get("status") == "completed" and run.get("conclusion") in ("success", "failure")

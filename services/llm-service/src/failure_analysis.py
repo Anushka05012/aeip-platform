@@ -20,6 +20,7 @@ from pathlib import PurePosixPath
 from typing import Any, Sequence
 
 from .domain import Commit, Deployment, PullRequest
+from .flaky import passing_runs_on_same_commit
 from .rag import RepositoryRetriever
 from .risk_engine import RiskResult
 from .risk_summary import ChatClient
@@ -161,6 +162,7 @@ class FailureEvidence:
     error_lines: list[str]
     log_source: str  # "job log", "annotations", or "none"
     pull_request: dict[str, Any] | None = None  # the PR whose branch this run built, if any
+    passed_on_same_commit: list[str] = field(default_factory=list)  # same workflow passed on this commit
 
 
 @dataclass
@@ -201,7 +203,8 @@ def find_pull_request(deployment: Deployment, pull_requests: Sequence[PullReques
 
 
 def build_evidence(deployment: Deployment, commit: Commit | None, failed_jobs: Sequence[Any],
-                   pull_requests: Sequence[PullRequest] = ()) -> FailureEvidence:
+                   pull_requests: Sequence[PullRequest] = (),
+                   history: Sequence[Deployment] = ()) -> FailureEvidence:
     jobs, texts = [], []
     log_source = "none"
     for job in failed_jobs:
@@ -225,7 +228,8 @@ def build_evidence(deployment: Deployment, commit: Commit | None, failed_jobs: S
         changed_files=list(commit.files) if commit else [],
         failed_jobs=jobs, error_lines=extract_error_lines(raw) if raw.strip() else [], log_source=log_source,
         pull_request={"number": pull_request.number, "title": pull_request.title, "state": pull_request.state,
-                      "base": pull_request.base_branch} if pull_request else None)
+                      "base": pull_request.base_branch} if pull_request else None,
+        passed_on_same_commit=passing_runs_on_same_commit(deployment, history))
 
 
 def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float, str, list[str], list[str]]:
@@ -248,6 +252,9 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
         signals.append("Error output points to the CI environment (missing command, permission or setting)")
         if config_changed:
             signals.append(f"The commit changed configuration ({', '.join(config_changed)}), which can break the CI setup")
+    if evidence.passed_on_same_commit:
+        signals.append(f"The same workflow passed on this exact commit (run {', '.join(evidence.passed_on_same_commit[:3])}), "
+                       "so the failure is not reproducible: likely a flaky test or job")
     if evidence.event == "schedule":
         signals.append("Run was triggered by a schedule, not by a code change")
     if evidence.pull_request:
@@ -262,7 +269,11 @@ def correlate(evidence: FailureEvidence, commit_known: bool) -> tuple[str, float
     if not evidence.error_lines:
         signals.append("No log or annotation text was available for this run")
 
-    if mentioned:
+    if evidence.passed_on_same_commit:
+        # Identical code passed, so the change cannot be the whole story. If the error names a changed
+        # file, the change may have added the flaky test itself, so stay unsure.
+        verdict, confidence = ("uncertain", 0.5) if mentioned else ("unrelated", 0.75)
+    elif mentioned:
         verdict, confidence = "related", 0.85
     elif category in ("infrastructure / flaky", "environment / setup", "docker / container") and config_changed:
         verdict, confidence = "related", 0.65
@@ -329,8 +340,9 @@ def _llm_judgement(evidence: FailureEvidence, heuristic: dict[str, Any], risks: 
 class FailureAnalyzer:
     def explain(self, deployment: Deployment, commit: Commit | None, failed_jobs: Sequence[Any],
                 risks: Sequence[RiskResult], retriever: RepositoryRetriever,
-                client: ChatClient | None = None, pull_requests: Sequence[PullRequest] = ()) -> FailureExplanation:
-        evidence = build_evidence(deployment, commit, failed_jobs, pull_requests)
+                client: ChatClient | None = None, pull_requests: Sequence[PullRequest] = (),
+                history: Sequence[Deployment] = ()) -> FailureExplanation:
+        evidence = build_evidence(deployment, commit, failed_jobs, pull_requests, history)
         verdict, confidence, category, signals, mentioned = correlate(evidence, commit is not None)
         risk_by_path = {risk.path: risk for risk in risks}
         changed_risks = [risk_by_path[path] for path in evidence.changed_files if path in risk_by_path]
@@ -340,6 +352,9 @@ class FailureAnalyzer:
 
         explanation = self._offline_explanation(evidence, verdict, category, mentioned)
         next_steps = list(NEXT_STEPS.get(category, NEXT_STEPS["unknown"]))
+        if evidence.passed_on_same_commit:
+            next_steps.insert(0, "Treat this as a flaky failure: find the non-deterministic test or job "
+                                 "(timing, ordering, shared state, network) and fix or quarantine it.")
         mode, notes = "offline", []
         if client is not None and evidence.error_lines:
             heuristic = {"verdict": verdict, "category": category, "signals": signals}
