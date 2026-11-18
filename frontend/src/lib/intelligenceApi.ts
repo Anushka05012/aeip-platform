@@ -1,6 +1,7 @@
 import { AssistantAnswer, FailureExplanation, IncidentDetail, IncidentSummary, IntelligenceOverview, RepositorySummary } from "@/types";
 
-const baseUrl = process.env.NEXT_PUBLIC_INTELLIGENCE_API_URL ?? "http://localhost:8001";
+// Same-origin backend-for-frontend (src/app/api/aeip): it adds auth and forwards to INTELLIGENCE_API_URL.
+const baseUrl = "/api/aeip";
 const ACTIVE_KEY = "aeip.activeRepository";
 export const ACTIVE_EVENT = "aeip:repository-changed";
 
@@ -15,6 +16,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error("The intelligence service is not running. Start it with: python scripts/serve.py");
   }
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && typeof window !== "undefined") {
+    // A full page load is intended here: proxy.ts must see the request to start sign-in.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+  }
   if (!response.ok) throw new Error(body.error ?? "The intelligence service is unavailable.");
   return body as T;
 }

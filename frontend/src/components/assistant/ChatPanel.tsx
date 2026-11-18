@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatMessage, Evidence } from "@/types";
 import { askAssistant } from "@/lib/intelligenceApi";
 import { useActiveRepository } from "@/lib/useActiveRepository";
+import { useSession } from "@/lib/useSession";
 import Markdown from "@/components/Markdown";
 import { Button, Notice } from "@/components/ui";
 
@@ -28,6 +29,7 @@ function Sources({ evidence }: { evidence: Evidence[] }) {
 }
 
 export default function ChatPanel({ initial }: { initial: ChatMessage[] }) {
+  const { can } = useSession();
   const [messages, setMessages] = useState<Message[]>(initial);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,7 +100,8 @@ export default function ChatPanel({ initial }: { initial: ChatMessage[] }) {
       <div className="flex gap-2">
         <input value={msg} onChange={(event) => setMsg(event.target.value)} placeholder="Ask about the code, a failure, or a risky file"
           className="flex-1 min-w-0 h-10 px-3 bg-panel border border-line-strong rounded-[5px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-accent" />
-        <Button type="submit" variant="primary" className="h-10 px-4" disabled={loading || !msg.trim()}>Ask</Button>
+        <Button type="submit" variant="primary" className="h-10 px-4" disabled={loading || !msg.trim() || !can("member")}
+          title={can("member") ? undefined : "Your role is viewer: ask an admin for member access to run this."}>Ask</Button>
       </div>
     </form>
   </div>;

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useSession } from "@/lib/useSession";
 import { Moon, Sun } from "lucide-react";
 import { getHealth } from "@/lib/intelligenceApi";
 import { setTheme, useTheme } from "@/lib/theme";
@@ -19,15 +21,37 @@ function ThemeToggle() {
     );
 }
 
+function UserMenu() {
+    const { session } = useSession();
+    if (!session?.user) return null;
+    if (!session.enabled) {
+        return <span className="text-[12px] text-muted" title="Set AUTH_SECRET, GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to require sign-in">
+            Login off (local dev)
+        </span>;
+    }
+    const { user } = session;
+    return (
+        <form action="/api/auth/logout" method="post" className="flex items-center gap-2">
+            {user.avatar && <span aria-hidden className="w-[22px] h-[22px] rounded-full bg-cover bg-center bg-sunken" style={{ backgroundImage: `url(${user.avatar})` }} />}
+            <span className="text-[12.5px] text-ink">{user.login}</span>
+            <span className="text-[11px] uppercase tracking-[0.05em] text-muted">{user.role}</span>
+            <button type="submit" className="text-[12.5px] text-accent hover:underline underline-offset-2">Sign out</button>
+        </form>
+    );
+}
+
 type Status = { state: "checking" } | { state: "up"; llm: string } | { state: "down" };
 
 export default function Topbar() {
     const repository = useActiveRepository();
+    const pathname = usePathname();
     const [status, setStatus] = useState<Status>({ state: "checking" });
 
     useEffect(() => {
+        if (pathname === "/login") return;
         getHealth().then((health) => setStatus({ state: "up", llm: health.llm })).catch(() => setStatus({ state: "down" }));
-    }, []);
+    }, [pathname]);
+    if (pathname === "/login") return null;
 
     const dot = status.state === "up" ? "bg-good" : status.state === "down" ? "bg-bad" : "bg-line-strong";
     const label = status.state === "up"
@@ -48,6 +72,7 @@ export default function Topbar() {
                     {label}
                 </div>
                 <ThemeToggle />
+                <UserMenu />
             </div>
         </div>
     );

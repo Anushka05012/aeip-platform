@@ -5,6 +5,7 @@ import IncidentTimeline from "@/components/incidents/IncidentTimeline";
 import { Badge, Button, Empty, Notice, PageHeader, Panel, type Tone } from "@/components/ui";
 import { getIncident, listIncidents } from "@/lib/intelligenceApi";
 import { formatDuration, shortSha, utcTime } from "@/lib/format";
+import { useSession } from "@/lib/useSession";
 import { IncidentDetail, IncidentSummary, RootCause } from "@/types";
 
 const confidenceTone: Record<RootCause["confidence"], Tone> = { likely: "bad", possible: "warn", weak: "neutral" };
@@ -44,9 +45,10 @@ function CauseCard({ cause, rank }: { cause: RootCause; rank: number }) {
 
 function Detail({ incident, onAi, busy }: { incident: IncidentDetail; onAi: () => void; busy: boolean }) {
   const top = incident.candidates[0];
+  const { can } = useSession();
   return <Panel
     title={<span>{incident.title}</span>}
-    aside={<Button variant="ghost" className="h-7" onClick={onAi} disabled={busy}>{busy ? "Writing…" : "AI summary"}</Button>}
+    aside={can("member") && <Button variant="ghost" className="h-7" onClick={onAi} disabled={busy}>{busy ? "Writing…" : "AI summary"}</Button>}
   >
     <div className="flex items-center gap-2 flex-wrap text-[12.5px] text-ink-2">
       <Badge tone={incident.status === "ongoing" ? "bad" : "good"}>{incident.status}</Badge>

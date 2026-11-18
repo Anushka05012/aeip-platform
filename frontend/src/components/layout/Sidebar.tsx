@@ -24,6 +24,7 @@ const sections = [
 
 export default function Sidebar() {
     const pathname = usePathname();
+    if (pathname === "/login") return null;
 
     return (
         <aside className="w-[212px] shrink-0 min-h-screen border-r border-line bg-sunken/60 flex flex-col">
@@ -53,7 +54,7 @@ export default function Sidebar() {
                 ))}
             </nav>
             <div className="px-5 py-4 border-t border-line text-[11.5px] leading-5 text-muted">
-                VIT Pune · CSA44<br />Mid-semester build
+                VIT Pune · CSA44<br />AI Engineering Intelligence Platform
             </div>
         </aside>
     );

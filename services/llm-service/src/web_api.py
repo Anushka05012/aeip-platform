@@ -48,7 +48,22 @@ DEMO_REPOSITORY = "acme/payments-api"
 START = datetime.fromisoformat("2026-09-09T12:00:00")
 NOW = datetime.fromisoformat("2026-09-16T12:00:00")
 LIVE_WINDOW_DAYS = 30
-ALLOWED_ORIGINS = {"http://localhost:3000", "http://127.0.0.1:3000"}
+ALLOWED_ORIGINS = {"http://localhost:3000", "http://127.0.0.1:3000"} | {
+    origin.strip() for origin in os.environ.get("AEIP_ALLOWED_ORIGINS", "").split(",") if origin.strip()}
+ROLE_RANK = {"viewer": 0, "member": 1, "admin": 2}
+
+
+def audit(action: str, user: str, role: str, detail: str = "", allowed: bool = True) -> None:
+    """Append-only record of who did what (SEC-03). Kept next to the cache, never sent anywhere."""
+    record = {"time": datetime.now().astimezone().isoformat(timespec="seconds"), "user": user, "role": role,
+              "action": action, "detail": detail[:200], "allowed": allowed}
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with (CACHE_DIR / "audit.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+    print(f"[audit] {record}")
 HISTORY_TERMS = set(tokenize("changed recent recently commit history fail failure failing broke build pipeline ci deploy"))
 
 
@@ -475,6 +490,24 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Request body must be an object.")
         return body
 
+    def _caller(self, needed: str = "viewer", action: str = "") -> tuple[str, str] | None:
+        """Identity forwarded by the dashboard's backend-for-frontend. When AEIP_SERVICE_TOKEN is set,
+        only callers holding it are accepted (SEC-01) and the forwarded role must allow the action
+        (SEC-02). Without it the API runs open for local development."""
+        expected = os.environ.get("AEIP_SERVICE_TOKEN", "")
+        if not expected:
+            return "local", "admin"
+        supplied = self.headers.get("X-AEIP-Service-Token", "")
+        if not hmac.compare_digest(supplied.encode(), expected.encode()):
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "This API only accepts calls from the AEIP dashboard."})
+            return None
+        user, role = self.headers.get("X-AEIP-User", "unknown")[:60], self.headers.get("X-AEIP-Role", "")
+        if ROLE_RANK.get(role, -1) < ROLE_RANK[needed]:
+            audit(action or self.path, user, role, "denied: needs " + needed, allowed=False)
+            self._send_json(HTTPStatus.FORBIDDEN, {"error": f"Role {role or 'none'} cannot do this; it needs {needed}."})
+            return None
+        return user, role
+
     def _ingest_authorized(self, query: dict[str, list[str]]) -> bool:
         """Ingest routes accept writes from outside tools. When AEIP_INGEST_KEY is set, require it
         (X-AEIP-Key header, Bearer token, or ?key= for tools that cannot set headers)."""
@@ -505,6 +538,13 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - inherited HTTP method name
         url = urlparse(self.path)
         repository = parse_qs(url.query).get("repository", [None])[0]
+        if url.path != "/health":
+            wants_ai = url.path == "/api/incidents" and parse_qs(url.query).get("ai", ["0"])[0] == "1"
+            caller = self._caller("member" if wants_ai else "viewer", "incident.ai-summary" if wants_ai else "")
+            if caller is None:
+                return
+            if wants_ai:
+                audit("incident.ai-summary", *caller, detail=url.query)
         if url.path == "/health":
             self._send_json(HTTPStatus.OK, {"status": "ok", "service": "aeip-intelligence",
                                             "llm": "groq" if groq_client_if_configured() else "offline"})
@@ -554,7 +594,19 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("Say which repository these events belong to: ?repository=owner/name")
                 return self.service.ingest_events(target, body, fmt)
             self._handle(ingest)
-        elif path == "/api/assistant":
+        elif path in ("/api/assistant", "/api/repositories/analyze", "/api/failures/explain"):
+            action = {"/api/assistant": "assistant.ask", "/api/repositories/analyze": "repository.analyze",
+                      "/api/failures/explain": "failure.explain"}[path]
+            caller = self._caller("member", action)
+            if caller is None:
+                return
+            audit(action, *caller)
+            self._post_action(path)
+        else:
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
+
+    def _post_action(self, path: str) -> None:
+        if path == "/api/assistant":
             def ask() -> dict[str, Any]:
                 body = self._read_body()
                 return self.service.ask(str(body.get("question", "")), bool(body.get("useAi", True)),
@@ -571,8 +623,6 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
                 return self.service.explain_failure(str(body.get("runId", "")), body.get("repository") or None,
                                                     bool(body.get("useAi", True)), bool(body.get("refresh", False)))
             self._handle(explain)
-        else:
-            self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
 
     def log_message(self, format: str, *args: Any) -> None:
         # Keep local demo output readable without hiding server errors.

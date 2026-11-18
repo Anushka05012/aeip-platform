@@ -82,7 +82,27 @@ npx tsx ingestion/webhook-listener.ts
 ```bash
 cd services/llm-service && python -m pytest tests     # intelligence service
 npx tsx --test ingestion/signature.test.ts             # webhook signature checks (from the project root)
+npx tsx --test frontend/src/lib/auth/session.test.ts   # sessions, roles, redirects
 ```
+
+## Sign-in and roles
+
+Locally AEIP runs open (the top bar says "Login off"). To require sign-in, create a GitHub
+OAuth app (callback `http://localhost:3000/api/auth/callback`) and set `GITHUB_CLIENT_ID`,
+`GITHUB_CLIENT_SECRET` and `AUTH_SECRET` in `frontend/.env.local`; see
+[frontend/.env.example](frontend/.env.example).
+
+| Role | Can |
+|---|---|
+| viewer | read every dashboard |
+| member | also analyse repositories, explain failures, ask the codebase, request AI summaries |
+| admin | also send events from the dashboard |
+
+Roles come from `AEIP_ADMINS` / `AEIP_MEMBERS` / `AEIP_VIEWERS` (GitHub logins); anyone else is
+refused unless `AEIP_DEFAULT_ROLE` is set. The browser only talks to the dashboard, which checks
+the session and forwards calls to the intelligence API with `AEIP_SERVICE_TOKEN`; the API
+rejects calls without it and re-checks the role. Actions are recorded in
+`services/llm-service/data/cache/audit.jsonl`.
 
 ## Project layout
 
