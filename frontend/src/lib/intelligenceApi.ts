@@ -1,4 +1,4 @@
-import { AssistantAnswer, CauseVerdict, FailureExplanation, IncidentDetail, IncidentSummary, IncidentTrackRecord, IntelligenceOverview, RepositorySummary, RiskModel } from "@/types";
+import { AssistantAnswer, CauseVerdict, ChangeAssessment, FailureExplanation, IncidentDetail, IncidentSummary, IncidentTrackRecord, IntelligenceOverview, RepositorySummary, RiskModel } from "@/types";
 
 // Same-origin backend-for-frontend (src/app/api/aeip): it adds auth and forwards to INTELLIGENCE_API_URL.
 const baseUrl = "/api/aeip";
@@ -96,4 +96,12 @@ export function sendCauseFeedback(incidentId: string, ref: string, verdict: Caus
 export function getIncident(id: string, useAi = false, repository = getActiveRepository()): Promise<IncidentDetail> {
   const params = new URLSearchParams({ id, ...(repository ? { repository } : {}), ...(useAi ? { ai: "1" } : {}) });
   return request<IncidentDetail>(`/api/incidents?${params}`);
+}
+
+/** Change guard: a pull request number, or the changed files, before merging. */
+export function assessChange(input: { pullRequest?: string; files?: string[] }, repository = getActiveRepository()): Promise<ChangeAssessment> {
+  return request<ChangeAssessment>("/api/changes/assess", {
+    method: "POST",
+    body: JSON.stringify({ ...input, repository: repository || undefined }),
+  });
 }

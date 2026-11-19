@@ -23,6 +23,8 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from .assistant import RepositoryAssistant
+from .change_guard import Change, ChangedFile, MAX_FILES
+from .change_guard import assess_change as guard_change
 from .domain import Commit, RepositorySnapshot
 from .dora import DoraMetrics, calculate_dora
 from .embeddings import make_embedder, tokenize
@@ -119,6 +121,14 @@ def _restore_delta(dora: DoraMetrics) -> str:
         return f"{dora.open_incidents} failure(s) not yet restored" if dora.open_incidents else "no failures to restore"
     text = f"median of {dora.restored_incidents} recover{'y' if dora.restored_incidents == 1 else 'ies'}"
     return text + (f" · {dora.open_incidents} still failing" if dora.open_incidents else "")
+
+
+def _relative(path: str) -> str:
+    """'./src/a.py' or '/src/a.py' -> 'src/a.py' (keeps dot-folders such as .github/)."""
+    path = path.strip().replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    return path.lstrip("/")
 
 
 def git_history_loader(cache_dir: Path | None) -> Callable[[str, bool], list[Commit]] | None:
@@ -344,11 +354,44 @@ class IntelligenceDemoService:
         """Fit the repository's own risk model from its history and confirmed incident causes."""
         commits = entry.history or entry.snapshot.commits
         history = RepositorySnapshot(entry.snapshot.repository, tuple(commits), (), entry.snapshot.documents)
-        now = max([entry.risk_now or entry.now] + [commit.authored_at for commit in entry.history[-1:]])
+        now = self._learning_now(entry)
         entry.learning = learn(history, now, incidents=self.feedback.labels(entry.snapshot.repository),
                                include=entry.include,
                                history_source=entry.history_source or ("demo fixture" if entry.source == "demo fixture"
                                                                        else "GitHub API (recent commits only)"))
+
+    @staticmethod
+    def _learning_now(entry: AnalyzedRepository) -> datetime:
+        return max([entry.risk_now or entry.now] + [commit.authored_at for commit in entry.history[-1:]])
+
+    def assess_change(self, repository: str | None, pull_request: Any = None, files: Any = None,
+                      title: str = "") -> dict[str, Any]:
+        """Change guard: a pull request (fetched from GitHub) or a list of changed files, before merging."""
+        entry, found = self._incidents(repository)
+        name = entry.snapshot.repository
+        if pull_request not in (None, ""):
+            try:
+                number = int(str(pull_request).lstrip("#"))
+            except ValueError as exc:
+                raise ValueError("Pull request must be a number, e.g. 42.") from exc
+            if entry.source == "demo fixture":
+                raise ValueError("The demo repository is not on GitHub: list the changed files instead.")
+            pull = self.github_factory().fetch_pull_request(name, number)
+            change = Change(name, [ChangedFile(item["path"], item["status"], item["additions"], item["deletions"])
+                                   for item in pull["files"]], pull["title"], pull["number"], pull["author"],
+                            pull["url"], "merged" if pull["merged"] else pull["state"])
+        else:
+            items = files.splitlines() if isinstance(files, str) else files
+            if not isinstance(items, list):
+                raise ValueError("Give a pull request number or a list of changed files.")
+            paths = list(dict.fromkeys(_relative(str(item)) for item in items if str(item).strip()))
+            if not paths:
+                raise ValueError("Give a pull request number or a list of changed files.")
+            if len(paths) > MAX_FILES:
+                raise ValueError(f"At most {MAX_FILES} files.")
+            change = Change(name, [ChangedFile(path) for path in paths], title or "Proposed change")
+        return guard_change(change, entry.snapshot, self._learning_now(entry), entry.history or entry.snapshot.commits,
+                            entry.learning, self.feedback.labels(name), found, entry.releases.deployments)
 
     def _risk_status(self, entry: AnalyzedRepository) -> dict[str, Any]:
         saved = len(self.feedback.labels(entry.snapshot.repository))
@@ -702,9 +745,11 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("Say which repository these events belong to: ?repository=owner/name")
                 return self.service.ingest_events(target, body, fmt)
             self._handle(ingest)
-        elif path in ("/api/assistant", "/api/repositories/analyze", "/api/failures/explain", "/api/incidents/feedback"):
+        elif path in ("/api/assistant", "/api/repositories/analyze", "/api/failures/explain", "/api/incidents/feedback",
+                      "/api/changes/assess"):
             action = {"/api/assistant": "assistant.ask", "/api/repositories/analyze": "repository.analyze",
-                      "/api/failures/explain": "failure.explain", "/api/incidents/feedback": "incident.feedback"}[path]
+                      "/api/failures/explain": "failure.explain", "/api/incidents/feedback": "incident.feedback",
+                      "/api/changes/assess": "change.assess"}[path]
             caller = self._caller("member", action)
             if caller is None:
                 return
@@ -714,6 +759,13 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
 
     def _post_action(self, path: str, user: str = "") -> None:
+        if path == "/api/changes/assess":
+            def assess() -> dict[str, Any]:
+                body = self._read_body(200_000)
+                return self.service.assess_change(body.get("repository") or None, body.get("pullRequest"),
+                                                  body.get("files"), str(body.get("title", ""))[:200])
+            self._handle(assess)
+            return
         if path == "/api/incidents/feedback":
             def feedback() -> dict[str, Any]:
                 body = self._read_body()

@@ -16,6 +16,7 @@ const sections = [
         items: [
             { label: "Incidents", href: "/incidents" },
             { label: "Change risk", href: "/risk" },
+            { label: "Change guard", href: "/guard" },
             { label: "CI failures", href: "/failures" },
             { label: "Ask the codebase", href: "/assistant" },
         ],

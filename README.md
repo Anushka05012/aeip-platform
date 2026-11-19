@@ -21,6 +21,9 @@ limits) still send people digging through their own commits.
   on the Incidents page. Once it has 50 labelled files it ranks with a per-repository model; on
   eight real repositories that model averaged AUC 0.737 against 0.647 for fixed weights
   ([evaluation](docs/EVALUATION.md), section 6).
+- **Change guard (before merge)**: for a pull request, which changed files tend to break and why, past
+  incidents involving them, code changed without its tests, who should review it, and a rollback plan,
+  including what a revert does not undo (migrations, dependencies, configuration). It only reports.
 - **Delivery health**: all four DORA metrics.
 - **Ask the codebase**: plain-English questions answered from the code, docs and history, with
   sources, using a local embedding model (code never leaves your infrastructure).
@@ -139,6 +142,17 @@ port 8001 and runs without sign-in (the top bar says "Login off").
    and click **Analyse**. The first analysis takes one to a few minutes: AEIP downloads the code, embeds it
    locally and reads up to five years of history with git to learn the repository's risk. The
    **Change risk** page then shows what it learned and its track record.
+4. On **Change guard**, click **Try the example change** (demo repository), or enter a pull request number of an
+   analysed repository (for example `5703` for `psf/black`): what it could break, who should review it, and
+   the rollback plan.
+
+The change guard also runs without a server, in CI or locally, on any checkout with full history. It needs only
+Python, prints a Markdown report and, in GitHub Actions, writes it to the job summary (this repository's CI does
+this for every pull request). It never fails the build unless you pass `--fail-on high`:
+
+```bash
+python services/llm-service/scripts/change_guard.py --repo . --base origin/main
+```
 
 ### Common problems
 

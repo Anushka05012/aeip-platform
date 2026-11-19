@@ -254,7 +254,25 @@ class GitHubDataSource:
             message=detail["commit"]["message"].strip(),
             dependency_files=tuple(entry["filename"] for entry in detail.get("files", [])
                                    if is_dependency_file(entry["filename"])),
+            author=((detail.get("author") or {}).get("login") or detail["commit"]["author"].get("name", "")),
         )
+
+    def fetch_pull_request(self, repository: str, number: int) -> dict[str, Any]:
+        """A pull request and the files it changes (for the change guard). At most 3,000 files, as GitHub."""
+        repository = parse_repository(repository)
+        pull = self._json(f"/repos/{repository}/pulls/{int(number)}")
+        files: list[dict[str, Any]] = []
+        for page in range(1, 31):
+            batch = self._json(f"/repos/{repository}/pulls/{int(number)}/files?per_page=100&page={page}")
+            files += [{"path": item["filename"], "status": item.get("status", "modified"),
+                       "additions": item.get("additions", 0), "deletions": item.get("deletions", 0),
+                       "previous": item.get("previous_filename", "")} for item in batch]
+            if len(batch) < 100:
+                break
+        return {"number": pull["number"], "title": pull.get("title", ""), "state": pull.get("state", ""),
+                "merged": bool(pull.get("merged_at")), "author": (pull.get("user") or {}).get("login", ""),
+                "url": pull.get("html_url", ""), "base": (pull.get("base") or {}).get("ref", ""),
+                "head": (pull.get("head") or {}).get("sha", ""), "files": files}
 
     def fetch_commit(self, repository: str, sha: str) -> Commit:
         """One commit (e.g. a PR-branch commit outside the default-branch history)."""
