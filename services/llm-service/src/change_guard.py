@@ -37,6 +37,7 @@ REVIEWER_DAYS = 365
 MAX_FILES = 200
 _MIGRATION = re.compile(r"(^|/)(migrations?|migrate|alembic/versions|db/changes)/|\.sql$", re.IGNORECASE)
 _DOCS = {".md", ".mdx", ".rst", ".txt"}
+_DATA_DIR = re.compile(r"(^|/)(data|fixtures?|samples?|examples?|testdata)/", re.IGNORECASE)  # JSON/YAML there is data
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,7 @@ def file_kind(path: str) -> str:
         return "migration"
     if is_dependency_file(path):
         return "dependency"
-    if is_config_file(path) or path.startswith(".github/"):
+    if path.startswith(".github/") or (is_config_file(path) and not _DATA_DIR.search(path)):
         return "config"
     if PurePosixPath(path).suffix.lower() in _DOCS or path.startswith("docs/"):
         return "docs"

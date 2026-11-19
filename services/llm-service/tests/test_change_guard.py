@@ -15,6 +15,8 @@ def test_file_kinds():
     assert file_kind("alembic/versions/abc_add_index.py") == "migration"
     assert file_kind("package-lock.json") == "dependency"
     assert file_kind(".github/workflows/ci.yml") == "config"
+    assert file_kind("deploy/app.yaml") == "config"
+    assert file_kind("services/api/data/demo_repository.json") != "config"  # data, not configuration
     assert file_kind("docs/runbook.md") == "docs"
 
 
