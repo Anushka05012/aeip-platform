@@ -26,7 +26,7 @@ from .domain import Commit, Deployment, Document, RepositorySnapshot
 from .embeddings import EmbeddingWorker, InMemoryVectorStore
 from .events import OpsEvent, make_event
 from .failure_analysis import build_evidence, correlate
-from .git_history import GitCommit, to_commit
+from .git_history import GitCommit, to_commit, tree_documents as _tree_documents
 from .git_history import read_history as git_history
 from .github_source import is_source_code
 from .incidents import detect_incidents
@@ -326,30 +326,6 @@ def _snapshot_at(repo: Path, history: Sequence[GitCommit], cutoff: datetime, win
     commits = tuple(to_commit(item) for item in history if cutoff - window <= item.time < cutoff)
     head = [item for item in history if item.time < cutoff][-1].sha
     return RepositorySnapshot("history", commits, (), tuple(_tree_documents(repo, head)))
-
-
-def _tree_documents(repo: Path, sha: str) -> list[Document]:
-    """Files at a commit: Python source with its text (for import counts), everything else by name only.
-    Blob contents are read in one `git cat-file --batch` call."""
-    listing = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", sha], capture_output=True, check=True).stdout
-    entries = []
-    for line in listing.decode("utf-8", errors="ignore").splitlines():
-        meta, _, name = line.partition("\t")
-        parts = meta.split()
-        if len(parts) == 3 and parts[1] == "blob":
-            entries.append((name, parts[2]))
-    wanted = [(name, blob) for name, blob in entries if is_source_code(name) and name.endswith(".py")]
-    texts: dict[str, str] = {}
-    if wanted:
-        out = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"], capture_output=True, check=True,
-                             input="".join(f"{blob}\n" for _, blob in wanted).encode()).stdout
-        position = 0
-        for name, _ in wanted:
-            header_end = out.index(b"\n", position)
-            size = int(out[position:header_end].split()[2])
-            texts[name] = out[header_end + 1:header_end + 1 + size].decode("utf-8", errors="ignore")
-            position = header_end + 1 + size + 1
-    return [Document(name, texts[name], "code") if name in texts else Document(name, "", "doc") for name, _ in entries]
 
 
 def evaluate_risk_history(repo: Path, cutoffs: int = 12, every_days: int = 120, window_days: int = 90,

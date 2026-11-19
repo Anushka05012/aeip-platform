@@ -160,7 +160,8 @@ class RiskEngine:
             level = "high" if score >= 70 else "medium" if score >= 40 else "low"
             reasons = [
                 f"{changes} change{'s' if changes != 1 else ''} in the last {window_days} days",
-                f"{churn} lines added or removed",
+                # Commits record their total line counts, so this is the size of the commits that touched the file.
+                f"{churn} lines changed in the commits that touched it",
                 f"complexity increased by {complexity}",
             ]
             if result.testable:

@@ -242,12 +242,13 @@ class RiskLearning:
         start = now - timedelta(days=self.window_days)
         return sum(1 for label in incidents if as_utc(start) <= as_utc(label.at) < as_utc(now) and path in label.files)
 
-    def assess(self, result: RiskResult, past_incidents: int = 0) -> dict[str, Any] | None:
+    def assess(self, result: RiskResult, past_incidents: int = 0, as_given: bool = False) -> dict[str, Any] | None:
         """Probability and the signals behind it, when the model is active. The file's signals are taken
-        from the history the model was trained on (same window), falling back to `result`."""
+        from the history the model was trained on (same window), falling back to `result`; `as_given` scores
+        `result` itself (the change guard passes signals that already include a proposed change)."""
         if not self.active or self.model is None:
             return None
-        x = features(self.current.get(result.path, result), past_incidents)
+        x = features(result if as_given else self.current.get(result.path, result), past_incidents)
         probability = self.model.probability(x)
         band = next((item for item in self.track_record if item["low"] <= probability < item["high"]), None)
         record = (f"When AEIP said {band['label']} for this repository before, {round(band['observed'] * 100)}% of "

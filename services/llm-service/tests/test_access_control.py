@@ -63,6 +63,12 @@ def test_service_token_and_roles_are_enforced(monkeypatch, tmp_path):
         assert status == 200 and body["feedback"] == {ref: "confirmed"}
         assert call(f"{base}/api/incidents/feedback", "POST", {**verdict, "verdict": "maybe"}, dashboard("member"))[0] == 400
         assert call(f"{base}/api/risk/model", headers=dashboard("viewer"))[1]["needed"] == 50
+
+        change = {"files": ["src/payment_service.py"]}
+        assert call(f"{base}/api/changes/assess", "POST", change, dashboard("viewer"))[0] == 403
+        status, body = call(f"{base}/api/changes/assess", "POST", change, dashboard("member"))
+        assert status == 200 and body["level"] in ("high", "medium", "low")
+        assert call(f"{base}/api/changes/assess", "POST", {"files": []}, dashboard("member"))[0] == 400
     finally:
         server.shutdown()
 

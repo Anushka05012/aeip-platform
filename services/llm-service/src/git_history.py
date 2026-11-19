@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .domain import Commit
+from .domain import Commit, Document
 from .github_source import is_dependency_file, is_source_code, parse_repository
 
 HISTORY_YEARS = 5  # enough dated windows for the model (click needs ~5 years to reach 50 labels)
@@ -42,23 +42,24 @@ class GitCommit:
     time: datetime
     subject: str
     files: list[tuple[str, int, int]] = field(default_factory=list)  # (path, lines added, lines deleted)
+    author: str = ""
 
 
 def read_history(repo: Path, token: str | None = None) -> list[GitCommit]:
     """Non-merge commits, oldest first, with per-file line counts. Files left out of a filtered copy are
     fetched on demand, which for a private repository needs the token."""
-    out = subprocess.run(["git", "-C", str(repo), "log", "--no-merges", "--numstat", "--format=@@%H|%aI|%s"],
+    out = subprocess.run(["git", "-C", str(repo), "log", "--no-merges", "--numstat", "--format=@@%H|%aI|%an|%s"],
                          capture_output=True, text=True, encoding="utf-8", errors="ignore", check=True,
                          env=_git_env(token)).stdout
     commits: list[GitCommit] = []
     for line in out.splitlines():
         if line.startswith("@@"):
-            sha, when, subject = line[2:].split("|", 2)
+            sha, when, author, subject = line[2:].split("|", 3)
             try:
                 moment = datetime.fromisoformat(when).astimezone(timezone.utc)
             except ValueError:  # a few old commits carry corrupt time zones such as "+518:00"
                 moment = datetime.fromisoformat(when[:19]).replace(tzinfo=timezone.utc)
-            commits.append(GitCommit(sha, moment, subject))
+            commits.append(GitCommit(sha, moment, subject, author=author))
         elif line.strip() and commits:
             parts = line.split("\t")
             if len(parts) == 3:
@@ -73,7 +74,7 @@ def to_commit(item: GitCommit) -> Commit:
                   tuple(path for path, _, _ in item.files if not is_dependency_file(path)),
                   sum(adds for path, adds, _ in item.files if is_source_code(path)),
                   sum(dels for path, _, dels in item.files if is_source_code(path)), 0, item.subject,
-                  tuple(path for path, _, _ in item.files if is_dependency_file(path)))
+                  tuple(path for path, _, _ in item.files if is_dependency_file(path)), item.author)
 
 
 def _git_env(token: str | None = None) -> dict[str, str]:
@@ -132,3 +133,27 @@ def load_history(repository: str, directory: Path, token: str | None = None,
         return [to_commit(item) for item in read_history(target, token)]
     except subprocess.CalledProcessError as exc:
         raise HistoryError("git could not read the history copy") from exc
+
+
+def tree_documents(repo: Path, sha: str) -> list[Document]:
+    """Files at a commit: Python source with its text (for import counts), everything else by name only.
+    Blob contents are read in one `git cat-file --batch` call."""
+    listing = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", sha], capture_output=True, check=True).stdout
+    entries = []
+    for line in listing.decode("utf-8", errors="ignore").splitlines():
+        meta, _, name = line.partition("\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == "blob":
+            entries.append((name, parts[2]))
+    wanted = [(name, blob) for name, blob in entries if is_source_code(name) and name.endswith(".py")]
+    texts: dict[str, str] = {}
+    if wanted:
+        out = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"], capture_output=True, check=True,
+                             input="".join(f"{blob}\n" for _, blob in wanted).encode()).stdout
+        position = 0
+        for name, _ in wanted:
+            header_end = out.index(b"\n", position)
+            size = int(out[position:header_end].split()[2])
+            texts[name] = out[header_end + 1:header_end + 1 + size].decode("utf-8", errors="ignore")
+            position = header_end + 1 + size + 1
+    return [Document(name, texts[name], "code") if name in texts else Document(name, "", "doc") for name, _ in entries]

@@ -147,3 +147,25 @@ export type IncidentDetail = IncidentSummary & {
   /** Engineers' verdicts on the candidates, by candidate ref. */
   feedback?: Record<string, CauseVerdict>;
 };
+
+/** Change guard (POST /api/changes/assess). */
+export type GuardFile = {
+  path: string; status: string; kind: "code" | "test" | "migration" | "dependency" | "config" | "docs" | "other";
+  additions: number; deletions: number; confirmedIncidents: number; lastConfirmedIncident: string | null;
+  suspectedIn: { id: string; title: string; start: string }[];
+  score?: number; level?: string; reasons?: string[]; pastFixes?: number; dependents?: number;
+  learned?: { probability: number; drivers: string[]; trackRecord?: string } | null;
+  tests?: "changed" | "other tests changed" | "not changed" | "none";
+};
+export type ChangeAssessment = {
+  repository: string;
+  change: { title: string; number: number | null; author: string; url: string; state: string; files: number; shown: number;
+    additions: number; deletions: number };
+  level: "high" | "medium" | "low";
+  findings: string[];
+  files: GuardFile[];
+  reviewers: { name: string; commits: number; files: string[] }[];
+  rollback: string[];
+  checks: string[];
+  model: { active: boolean; message: string; meaning: string };
+};

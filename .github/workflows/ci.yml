@@ -36,6 +36,25 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest tests -q
 
+  change-guard:
+    name: Change guard (report only)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the guard learns from the repository's history
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Writes the report to this run's summary page. Never fails the build: AEIP only reports.
+      - env:
+          BASE: origin/${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python services/llm-service/scripts/change_guard.py --repo . --base "$BASE" --head "$HEAD_SHA"
+
   dashboard:
     name: Dashboard (Next.js)
     runs-on: ubuntu-latest

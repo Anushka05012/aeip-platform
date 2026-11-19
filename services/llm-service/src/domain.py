@@ -17,6 +17,7 @@ class Commit:
     complexity_delta: int = 0
     message: str = ""
     dependency_files: tuple[str, ...] = ()  # manifests/lockfiles changed (kept out of churn)
+    author: str = ""  # GitHub login when known, else the git author name
 
 
 @dataclass(frozen=True)
