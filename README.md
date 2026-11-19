@@ -146,8 +146,9 @@ port 8001 and runs without sign-in (the top bar says "Login off").
 |---|---|
 | `python` not found (Windows) | Reinstall Python with "Add python.exe to PATH" ticked, or use `py -3` instead of `python` |
 | Dashboard says "The intelligence service is not running" | Terminal 1 must be running `python scripts/serve.py` |
-| Port 8001 already in use | Start the API with another port, e.g. `PORT=8011 python scripts/serve.py` (PowerShell: `$env:PORT="8011"` first), and start the dashboard with `INTELLIGENCE_API_URL=http://localhost:8011 npm run dev` (PowerShell: `$env:INTELLIGENCE_API_URL="http://localhost:8011"` first) |
-| Port 3000 already in use | `npm run dev -- -p 3100`, then open http://localhost:3100 |
+| Port 3000 already in use | macOS/Linux: `PORT=3100 npm run dev`. PowerShell: `$env:PORT="3100"; npm run dev`. Then open http://localhost:3100 |
+| Port 8001 already in use | Start the API on another port (macOS/Linux: `PORT=8011 python scripts/serve.py`; PowerShell: `$env:PORT="8011"; python scripts\serve.py`) and tell the dashboard (macOS/Linux: `INTELLIGENCE_API_URL=http://localhost:8011 npm run dev`; PowerShell: `$env:INTELLIGENCE_API_URL="http://localhost:8011"; npm run dev`) |
+| A dashboard page shows an error after pulling new code | Stop the dashboard, delete the `frontend/.next` folder, run `npm install` and `npm run dev` again |
 | "GitHub rate limit" when analysing | Add `GITHUB_TOKEN` to `services/llm-service/.env` and restart the API |
 | Little memory (under 2 GB free) or no internet for the model download | Add `AEIP_EMBEDDINGS=hashing` to `services/llm-service/.env` (keyword search instead of the semantic model) |
 | Change risk says "the history is too short" | Normal for the demo repository; analyse a real repository (needs `git` installed and on PATH) |
